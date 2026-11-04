@@ -18,25 +18,46 @@ enum ConsentType {
   TERMS_OF_SERVICE
 }
 
-model User {
-  id                         String        @id @default(cuid())
-  email                      String        @unique
-  name                       String?
-  role                       UserRole      @default(CLIENT)
-  /// ISO 3166-1 alpha-2 country code used to route KYC (e.g. IN → DigiLocker)
-  countryCode                String?       @map("country_code")
-  locale                     String?       @default("en")
-  govIdVerified              Boolean       @default(false) @map("gov_id_verified")
-  /// e.g. 'digilocker', 'stripe_identity', or a regional equivalent
-  kycProvider                String?       @map("kyc_provider")
-  monitoringConsentGranted   Boolean       @default(false) @map("monitoring_consent_granted")
-  createdAt                  DateTime      @default(now()) @map("created_at")
-  updatedAt                  DateTime      @updatedAt @map("updated_at")
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
 
-  consentLogs ConsentLogs[]
-  projects    Project[]     @relation("ProjectOwner")
-  vaultFunds  VaultFund[]
-  mergeEvents MergeEvent[]
+enum MilestoneStatus {
+  PENDING
+  FUNDED
+  IN_PROGRESS
+  SUBMITTED
+  AUDITING
+  PASSED
+  FAILED
+  PAID
+  CANCELLED
+}
+
+model User {
+  id                       String   @id @default(cuid())
+  email                    String   @unique
+  name                     String?
+  role                     UserRole @default(CLIENT)
+  /// ISO 3166-1 alpha-2 country code used to route KYC (e.g. IN → DigiLocker)
+  countryCode              String?  @map("country_code")
+  locale                   String?  @default("en")
+  govIdVerified            Boolean  @default(false) @map("gov_id_verified")
+  /// e.g. 'digilocker', 'stripe_identity', or a regional equivalent
+  kycProvider              String?  @map("kyc_provider")
+  monitoringConsentGranted Boolean  @default(false) @map("monitoring_consent_granted")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  consentLogs           ConsentLogs[]
+  projectsAsClient      Project[]     @relation("ProjectClient")
+  projectsAsFreelancer  Project[]     @relation("ProjectFreelancer")
+  vaultFunds            VaultFund[]
+  mergeEvents           MergeEvent[]
 
   @@map("users")
 }
@@ -62,47 +83,91 @@ model ConsentLogs {
   @@map("consent_logs")
 }
 
-/// Scaffold: project creation is gated by KYC + monitoring consent.
+/// Client + freelancer engagement with milestones and escrowed payouts.
 model Project {
-  id          String   @id @default(cuid())
-  ownerId     String   @map("owner_id")
-  title       String
-  description String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String        @id @default(cuid())
+  clientId     String        @map("client_id")
+  freelancerId String        @map("freelancer_id")
+  title        String
+  description  String?
+  status       ProjectStatus @default(DRAFT)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  owner User @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  client     User        @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
+  freelancer User        @relation("ProjectFreelancer", fields: [freelancerId], references: [id], onDelete: Restrict)
+  milestones Milestone[]
+  vaultFunds VaultFund[]
+  mergeEvents MergeEvent[]
 
-  @@index([ownerId])
+  @@index([clientId])
+  @@index([freelancerId])
+  @@index([status])
   @@map("projects")
+}
+
+/// Milestone: task, acceptance rules, amount; optional GitHub fields for later merge/audit.
+model Milestone {
+  id                  String          @id @default(cuid())
+  projectId           String          @map("project_id")
+  /// Human-readable order within the project (1-based recommended)
+  sequence            Int             @default(1)
+  title               String
+  /// Task description the freelancer must complete
+  taskDescription     String          @map("task_description")
+  /// Rules the AI auditor (and parties) use to accept the work
+  acceptanceCriteria  String          @map("acceptance_criteria")
+  /// Escrow amount for this milestone in the smallest currency unit (e.g. cents)
+  amountCents         Int             @map("amount_cents")
+  currency            String          @default("USD")
+  status              MilestoneStatus @default(PENDING)
+  /// Optional GitHub repo (owner/name) linked for this milestone
+  githubRepoFullName  String?         @map("github_repo_full_name")
+  /// Optional PR number once work is submitted
+  githubPrNumber      Int?            @map("github_pr_number")
+  /// Optional full PR URL for later webhook / AI audit wiring
+  githubPrUrl         String?         @map("github_pr_url")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([status])
+  @@unique([projectId, sequence])
+  @@map("milestones")
 }
 
 /// Scaffold: vault funding is gated by KYC + monitoring consent.
 model VaultFund {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  projectId String?  @map("project_id")
-  amountCents Int    @map("amount_cents")
-  currency  String   @default("USD")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  projectId   String?  @map("project_id")
+  amountCents Int      @map("amount_cents")
+  currency    String   @default("USD")
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([projectId])
   @@map("vault_funds")
 }
 
 /// Scaffold: code merge actions are gated by KYC + monitoring consent.
 model MergeEvent {
-  id         String   @id @default(cuid())
-  userId     String   @map("user_id")
-  projectId  String?  @map("project_id")
-  prNumber   Int?     @map("pr_number")
-  repoFullName String? @map("repo_full_name")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  projectId    String?  @map("project_id")
+  prNumber     Int?     @map("pr_number")
+  repoFullName String?  @map("repo_full_name")
+  createdAt    DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([projectId])
   @@map("merge_events")
 }

@@ -1,4 +1,5 @@
 const { prisma } = require('../lib/prisma');
+const { isProjectParticipant } = require('./projectsController');
 
 /** POST /api/vault/fund — gated by requireKycAndConsent */
 async function fundVault(req, res, next) {
@@ -12,6 +13,16 @@ async function fundVault(req, res, next) {
         error: 'invalid_amount',
         message: 'amountCents must be a positive integer (cents).',
       });
+    }
+
+    if (projectId) {
+      const project = await prisma.project.findUnique({ where: { id: String(projectId) } });
+      if (!project) {
+        return res.status(404).json({ error: 'project_not_found' });
+      }
+      if (!isProjectParticipant(req.user.id, project)) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
     }
 
     const fund = await prisma.vaultFund.create({
