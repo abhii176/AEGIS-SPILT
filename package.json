@@ -1,0 +1,28 @@
+{
+  "name": "aegis-split",
+  "version": "0.1.0",
+  "description": "Escrow marketplace with KYC, monitoring consent, PayPal vault, and AI-audited GitHub merges",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "test": "node src/services/kyc/index.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.5.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.5.0"
+  },
+  "private": true
+}

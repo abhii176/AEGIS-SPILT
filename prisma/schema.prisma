@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CLIENT
+  FREELANCER
+}
+
+/// Consent document kinds. MONITORING covers chats + call recordings for disputes/counseling.
+enum ConsentType {
+  MONITORING
+  TERMS_OF_SERVICE
+}
+
+model User {
+  id                         String        @id @default(cuid())
+  email                      String        @unique
+  name                       String?
+  role                       UserRole      @default(CLIENT)
+  /// ISO 3166-1 alpha-2 country code used to route KYC (e.g. IN → DigiLocker)
+  countryCode                String?       @map("country_code")
+  locale                     String?       @default("en")
+  govIdVerified              Boolean       @default(false) @map("gov_id_verified")
+  /// e.g. 'digilocker', 'stripe_identity', or a regional equivalent
+  kycProvider                String?       @map("kyc_provider")
+  monitoringConsentGranted   Boolean       @default(false) @map("monitoring_consent_granted")
+  createdAt                  DateTime      @default(now()) @map("created_at")
+  updatedAt                  DateTime      @updatedAt @map("updated_at")
+
+  consentLogs ConsentLogs[]
+  projects    Project[]     @relation("ProjectOwner")
+  vaultFunds  VaultFund[]
+  mergeEvents MergeEvent[]
+
+  @@map("users")
+}
+
+/// Exact timestamp + IP when the user agreed to mandatory monitoring ToS.
+model ConsentLogs {
+  id             String      @id @default(cuid())
+  userId         String      @map("user_id")
+  consentType    ConsentType @map("consent_type")
+  /// Document / policy version the user accepted (e.g. MONITORING_CONSENT_VERSION)
+  consentVersion String      @map("consent_version")
+  /// Server-recorded moment of agreement
+  agreedAt       DateTime    @default(now()) @map("agreed_at")
+  /// Client IP at the time of agreement
+  ipAddress      String      @map("ip_address")
+  userAgent      String?     @map("user_agent")
+  metadata       Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([consentType, consentVersion])
+  @@map("consent_logs")
+}
+
+/// Scaffold: project creation is gated by KYC + monitoring consent.
+model Project {
+  id          String   @id @default(cuid())
+  ownerId     String   @map("owner_id")
+  title       String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  owner User @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+/// Scaffold: vault funding is gated by KYC + monitoring consent.
+model VaultFund {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  projectId String?  @map("project_id")
+  amountCents Int    @map("amount_cents")
+  currency  String   @default("USD")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("vault_funds")
+}
+
+/// Scaffold: code merge actions are gated by KYC + monitoring consent.
+model MergeEvent {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  projectId  String?  @map("project_id")
+  prNumber   Int?     @map("pr_number")
+  repoFullName String? @map("repo_full_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("merge_events")
+}
