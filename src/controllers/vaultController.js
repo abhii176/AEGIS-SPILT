@@ -1,46 +1,79 @@
-const { prisma } = require('../lib/prisma');
-const { isProjectParticipant } = require('./projectsController');
+const { createEscrowService } = require('../services/paypal/escrow');
+
+const escrow = createEscrowService();
 
 /** POST /api/vault/fund — gated by requireKycAndConsent */
 async function fundVault(req, res, next) {
   try {
-    const amountCents = Number(req.body?.amountCents ?? req.body?.amount_cents);
-    const currency = String(req.body?.currency || 'USD').toUpperCase();
-    const projectId = req.body?.projectId || req.body?.project_id || null;
-
-    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    const projectId = req.body?.projectId || req.body?.project_id;
+    if (!projectId) {
       return res.status(400).json({
-        error: 'invalid_amount',
-        message: 'amountCents must be a positive integer (cents).',
+        error: 'project_id_required',
+        message: 'projectId is required to lock escrow funds.',
       });
     }
 
-    if (projectId) {
-      const project = await prisma.project.findUnique({ where: { id: String(projectId) } });
-      if (!project) {
-        return res.status(404).json({ error: 'project_not_found' });
-      }
-      if (!isProjectParticipant(req.user.id, project)) {
-        return res.status(403).json({ error: 'forbidden' });
-      }
-    }
+    const milestoneId = req.body?.milestoneId || req.body?.milestone_id || null;
+    const amountCentsRaw = req.body?.amountCents ?? req.body?.amount_cents;
+    const amountCents = amountCentsRaw != null ? Number(amountCentsRaw) : null;
+    const currency = req.body?.currency ? String(req.body.currency).toUpperCase() : undefined;
 
-    const fund = await prisma.vaultFund.create({
-      data: {
-        userId: req.user.id,
-        projectId: projectId ? String(projectId) : null,
-        amountCents,
-        currency,
-      },
+    const autoCapture =
+      req.body?.capture != null
+        ? Boolean(req.body.capture)
+        : req.body?.autoCapture != null
+          ? Boolean(req.body.autoCapture)
+          : undefined;
+
+    const result = await escrow.fundProjectVault({
+      userId: req.user.id,
+      projectId: String(projectId),
+      milestoneId: milestoneId ? String(milestoneId) : null,
+      amountCents,
+      currency,
+      autoCapture,
     });
 
     return res.status(201).json({
-      vaultFund: fund,
-      note: 'PayPal Orders lock not wired yet — scaffold record only.',
+      vaultFund: result.vaultFund,
+      project: result.project,
+      paypal: result.paypal,
+      note: result.paypal.autoCapture
+        ? 'PayPal order created and captured — funds locked in escrow vault.'
+        : 'PayPal order created — open approvalUrl, then POST /api/vault/capture.',
     });
   } catch (err) {
     return next(err);
   }
 }
 
-module.exports = { fundVault };
+/** POST /api/vault/capture — gated by requireKycAndConsent */
+async function captureVault(req, res, next) {
+  try {
+    const vaultFundId = req.body?.vaultFundId || req.body?.vault_fund_id || null;
+    const orderId = req.body?.orderId || req.body?.order_id || req.body?.token || null;
+
+    if (!vaultFundId && !orderId) {
+      return res.status(400).json({
+        error: 'order_or_fund_required',
+        message: 'Provide vaultFundId or orderId (PayPal token).',
+      });
+    }
+
+    const result = await escrow.captureVaultOrder({
+      userId: req.user.id,
+      vaultFundId,
+      orderId,
+    });
+
+    return res.status(200).json({
+      vaultFund: result.vaultFund,
+      alreadyCaptured: result.alreadyCaptured,
+      paypal: result.paypal || null,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { fundVault, captureVault, escrow };

@@ -10,6 +10,7 @@ const {
   addMilestone,
   listMilestones,
 } = require('../controllers/milestonesController');
+const { releaseMilestone } = require('../controllers/payoutsController');
 
 const router = express.Router();
 
@@ -31,5 +32,16 @@ router.post(
   addMilestone
 );
 router.get('/:projectId/milestones', requireAuth, listMilestones);
+
+/**
+ * Release milestone payout (PayPal Payouts).
+ * Callable by AI auditor later; parties with KYC+consent can trigger for demo.
+ */
+router.post(
+  '/:projectId/milestones/:milestoneId/release',
+  requireAuth,
+  requireKycAndConsent,
+  releaseMilestone
+);
 
 module.exports = router;

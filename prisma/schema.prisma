@@ -34,8 +34,23 @@ enum MilestoneStatus {
   AUDITING
   PASSED
   FAILED
+  /// Escrow released / payout initiated (hackathon + AI auditor hook)
+  RELEASED
   PAID
   CANCELLED
+}
+
+enum ProjectFundedStatus {
+  UNFUNDED
+  PARTIAL
+  FUNDED
+}
+
+enum VaultFundStatus {
+  PENDING
+  ORDER_CREATED
+  CAPTURED
+  FAILED
 }
 
 model User {
@@ -46,6 +61,8 @@ model User {
   /// ISO 3166-1 alpha-2 country code used to route KYC (e.g. IN → DigiLocker)
   countryCode              String?  @map("country_code")
   locale                   String?  @default("en")
+  /// PayPal sandbox/live email used as Payouts recipient for freelancers
+  paypalEmail              String?  @map("paypal_email")
   govIdVerified            Boolean  @default(false) @map("gov_id_verified")
   /// e.g. 'digilocker', 'stripe_identity', or a regional equivalent
   kycProvider              String?  @map("kyc_provider")
@@ -91,6 +108,12 @@ model Project {
   title        String
   description  String?
   status       ProjectStatus @default(DRAFT)
+  /// Aggregate escrow lock state for the project vault
+  fundedStatus ProjectFundedStatus @default(UNFUNDED) @map("funded_status")
+  /// Most recent PayPal Orders v2 order id that locked project/milestone funds
+  paypalOrderId   String? @map("paypal_order_id")
+  /// Most recent PayPal capture id after client payment is captured
+  paypalCaptureId String? @map("paypal_capture_id")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
@@ -103,6 +126,7 @@ model Project {
   @@index([clientId])
   @@index([freelancerId])
   @@index([status])
+  @@index([fundedStatus])
   @@map("projects")
 }
 
@@ -127,10 +151,18 @@ model Milestone {
   githubPrNumber      Int?            @map("github_pr_number")
   /// Optional full PR URL for later webhook / AI audit wiring
   githubPrUrl         String?         @map("github_pr_url")
+  /// PayPal Payouts batch id once this milestone is released
+  paypalPayoutBatchId String?         @map("paypal_payout_batch_id")
+  /// PayPal Payouts item id for this milestone release
+  paypalPayoutItemId  String?         @map("paypal_payout_item_id")
+  /// Email used as Payouts receiver (usually freelancer.paypalEmail)
+  payoutEmail         String?         @map("payout_email")
+  releasedAt          DateTime?       @map("released_at")
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vaultFunds VaultFund[]
 
   @@index([projectId])
   @@index([status])
@@ -138,20 +170,31 @@ model Milestone {
   @@map("milestones")
 }
 
-/// Scaffold: vault funding is gated by KYC + monitoring consent.
+/// Vault funding via PayPal Orders — gated by KYC + monitoring consent.
 model VaultFund {
-  id          String   @id @default(cuid())
-  userId      String   @map("user_id")
-  projectId   String?  @map("project_id")
-  amountCents Int      @map("amount_cents")
-  currency    String   @default("USD")
-  createdAt   DateTime @default(now()) @map("created_at")
+  id              String          @id @default(cuid())
+  userId          String          @map("user_id")
+  projectId       String?         @map("project_id")
+  /// When set, this fund locks a single milestone; otherwise full project/custom amount
+  milestoneId     String?         @map("milestone_id")
+  amountCents     Int             @map("amount_cents")
+  currency        String          @default("USD")
+  status          VaultFundStatus @default(PENDING)
+  paypalOrderId   String?         @map("paypal_order_id")
+  paypalCaptureId String?         @map("paypal_capture_id")
+  /// PayPal approve link when capture is deferred to buyer redirect
+  approvalUrl     String?         @map("approval_url")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([projectId])
+  @@index([milestoneId])
+  @@index([paypalOrderId])
   @@map("vault_funds")
 }
 
