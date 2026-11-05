@@ -40,6 +40,23 @@ const env = {
 
   monitoringConsentVersion: optional('MONITORING_CONSENT_VERSION', '1.0.0'),
   defaultMilestoneCurrency: optional('DEFAULT_MILESTONE_CURRENCY', 'USD'),
+
+  paypal: {
+    clientId: optional('PAYPAL_CLIENT_ID'),
+    clientSecret: optional('PAYPAL_CLIENT_SECRET'),
+    /// sandbox | live — base URL for REST calls
+    mode: optional('PAYPAL_MODE', 'sandbox'),
+    /// When true (or credentials empty), Orders/Payouts return mock IDs for local demo/tests
+    mock:
+      String(optional('PAYPAL_MOCK', '')).toLowerCase() === 'true' ||
+      optional('PAYPAL_MOCK') === '1',
+    /// Hackathon default: create order then capture immediately (no buyer redirect UI required)
+    autoCapture:
+      String(optional('PAYPAL_AUTO_CAPTURE', 'true')).toLowerCase() !== 'false',
+  },
+
+  /// Shared secret for POST /api/admin/demo/... hackathon triggers (header X-Demo-Admin-Key)
+  demoAdminKey: optional('DEMO_ADMIN_KEY', 'hackathon-demo-key'),
 };
 
 module.exports = { env };

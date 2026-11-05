@@ -7,6 +7,7 @@ const consentRoutes = require('./routes/consent');
 const projectsRoutes = require('./routes/projects');
 const vaultRoutes = require('./routes/vault');
 const mergeRoutes = require('./routes/merge');
+const adminDemoRoutes = require('./routes/adminDemo');
 
 function createApp() {
   const app = express();
@@ -26,6 +27,7 @@ function createApp() {
   app.use('/api/projects', projectsRoutes);
   app.use('/api/vault', vaultRoutes);
   app.use('/api/merge', mergeRoutes);
+  app.use('/api/admin/demo', adminDemoRoutes);
 
   app.use((err, _req, res, _next) => {
     const status = err.status || err.statusCode || 500;
