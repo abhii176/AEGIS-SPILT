@@ -69,6 +69,16 @@ const env = {
     appPrivateKey: optional('GITHUB_APP_PRIVATE_KEY'),
     appInstallationId: optional('GITHUB_APP_INSTALLATION_ID'),
   },
+
+  /// Milestone AI auditor — LLM when keys set; else deterministic heuristics
+  ai: {
+    /// auto | openai | anthropic | deterministic
+    provider: optional('AI_AUDITOR_PROVIDER', 'auto'),
+    openaiApiKey: optional('OPENAI_API_KEY'),
+    anthropicApiKey: optional('ANTHROPIC_API_KEY'),
+    openaiModel: optional('OPENAI_MODEL', 'gpt-4o-mini'),
+    anthropicModel: optional('ANTHROPIC_MODEL', 'claude-3-5-haiku-latest'),
+  },
 };
 
 module.exports = { env };

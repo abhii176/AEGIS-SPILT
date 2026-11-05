@@ -9,7 +9,8 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **KYC + consent** | DigiLocker / Stripe Identity scaffolds, `ConsentLogs`, gate middleware |
 | **Projects + milestones** | Client/freelancer projects, milestones with acceptance criteria + amounts |
 | **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
-| **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor stub → PayPal release |
+| **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
+| **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
 
 ## Setup
 
@@ -126,7 +127,7 @@ X-Hub-Signature-256: sha256=...
 X-GitHub-Event: pull_request
 ```
 
-Handles `pull_request` `closed` with `merged=true`. Fetches PR diff via `GITHUB_TOKEN`, or accepts an embedded `diff` / `aegis_diff` stub. AI auditor stub (`services/aiAuditor.auditMilestone`) keyword-checks acceptance criteria; on PASS calls existing escrow `releaseMilestone`.
+Handles `pull_request` `closed` with `merged=true`. Fetches PR diff via `GITHUB_TOKEN`, or accepts an embedded `diff` / `aegis_diff` stub. AI auditor (`services/aiAuditor.auditMilestone`) parses acceptance criteria into checks, scores the PR diff (OpenAI/Anthropic when `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set; otherwise deterministic heuristics), and returns `{ passed, reason, checks, report }`; on PASS calls existing escrow `releaseMilestone`.
 
 Hackathon without a public URL:
 
@@ -146,6 +147,7 @@ X-Demo-Admin-Key: hackathon-demo-key
 5. Link GitHub: `POST .../milestones/:id/github` with `githubRepoFullName` + optional PR.
 6. Simulate merge (or fire a real webhook): `POST /api/admin/demo/milestones/:id/simulate-merge` with `X-Demo-Admin-Key`.
 7. Confirm audit `PASS`, milestone `PAID` + `paypal_payout_batch_id` / `github_merge_sha` set.
+8. Judges see the structured audit on the simulate-merge / webhook JSON (`audit.reason`, `audit.checks[]`) and on `milestone.auditReport` (PASS/FAIL text with ✓/✗ evidence).
 
 ## Tests
 

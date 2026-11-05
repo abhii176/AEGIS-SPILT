@@ -29,7 +29,8 @@ function testSignatureRejectsWrongLength() {
   assert.strictEqual(verifyGithubSignature(Buffer.from('{x}', 'utf8'), sig, secret), false);
 }
 
-async function testAiAuditorStub() {
+async function testAiAuditorHandoffStillWorks() {
+  // Smoke: merge path still consumes { passed, report } from hardened auditor
   const pass = await auditMilestone({
     milestoneId: 'ms-1',
     acceptanceCriteria: 'Ship hero CTA lighthouse accessibility',
@@ -37,6 +38,7 @@ async function testAiAuditorStub() {
   });
   assert.strictEqual(pass.passed, true);
   assert.ok(pass.report.includes('PASS'));
+  assert.ok(Array.isArray(pass.checks));
 
   const fail = await auditMilestone({
     milestoneId: 'ms-2',
@@ -44,7 +46,7 @@ async function testAiAuditorStub() {
     diff: '+ console.log("hello")\n',
   });
   assert.strictEqual(fail.passed, false);
-  assert.ok(fail.missingKeywords.length > 0);
+  assert.ok(fail.checks.some((c) => c.met === false));
 
   assert.ok(tokenize('Ship hero CTA').includes('ship'));
   assert.ok(tokenize('Ship hero CTA').includes('hero'));
@@ -267,7 +269,7 @@ async function testMergeHandlerRejectsUnfunded() {
 async function run() {
   testSignatureRoundTrip();
   testSignatureRejectsWrongLength();
-  await testAiAuditorStub();
+  await testAiAuditorHandoffStillWorks();
   await testMergeHandlerPassAndRelease();
   await testMergeHandlerFailMarksFailed();
   await testMergeHandlerBlocksWithoutKyc();

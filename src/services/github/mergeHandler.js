@@ -220,13 +220,18 @@ function createMergeHandler({
       acceptanceCriteria: milestone.acceptanceCriteria,
     });
 
+    // Persist judge-facing text; keep structured audit on the API response object
+    const auditReportText =
+      audit.report ||
+      `${audit.passed ? 'PASS' : 'FAIL'} — ${audit.reason || ''}`.trim();
+
     if (!audit.passed) {
       const failed = await db.milestone.update({
         where: { id: milestone.id },
         data: {
           status: 'FAILED',
           auditPassed: false,
-          auditReport: audit.report,
+          auditReport: auditReportText,
           auditCheckedAt: new Date(),
         },
       });
@@ -245,7 +250,7 @@ function createMergeHandler({
       data: {
         status: 'PASSED',
         auditPassed: true,
-        auditReport: audit.report,
+        auditReport: auditReportText,
         auditCheckedAt: new Date(),
       },
     });
