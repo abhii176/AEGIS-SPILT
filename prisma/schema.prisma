@@ -151,6 +151,15 @@ model Milestone {
   githubPrNumber      Int?            @map("github_pr_number")
   /// Optional full PR URL for later webhook / AI audit wiring
   githubPrUrl         String?         @map("github_pr_url")
+  /// Merge commit SHA once the linked PR is merged
+  githubMergeSha      String?         @map("github_merge_sha")
+  /// When the linked PR was merged (from webhook or demo simulate)
+  githubMergedAt      DateTime?       @map("github_merged_at")
+  /// AI auditor pass/fail (null until audit runs)
+  auditPassed         Boolean?        @map("audit_passed")
+  /// Human-readable audit summary for demo / next AI PR
+  auditReport         String?         @map("audit_report") @db.Text
+  auditCheckedAt      DateTime?       @map("audit_checked_at")
   /// PayPal Payouts batch id once this milestone is released
   paypalPayoutBatchId String?         @map("paypal_payout_batch_id")
   /// PayPal Payouts item id for this milestone release
@@ -161,11 +170,13 @@ model Milestone {
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
-  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  vaultFunds VaultFund[]
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vaultFunds  VaultFund[]
+  mergeEvents MergeEvent[]
 
   @@index([projectId])
   @@index([status])
+  @@index([githubRepoFullName, githubPrNumber])
   @@unique([projectId, sequence])
   @@map("milestones")
 }
@@ -198,19 +209,27 @@ model VaultFund {
   @@map("vault_funds")
 }
 
-/// Scaffold: code merge actions are gated by KYC + monitoring consent.
+/// Code merge events from GitHub webhooks or hackathon demo simulate.
 model MergeEvent {
   id           String   @id @default(cuid())
   userId       String   @map("user_id")
   projectId    String?  @map("project_id")
+  milestoneId  String?  @map("milestone_id")
   prNumber     Int?     @map("pr_number")
   repoFullName String?  @map("repo_full_name")
+  mergeSha     String?  @map("merge_sha")
+  /// webhook | demo | manual
+  source       String?  @default("manual")
+  /// Optional diff stub / payload metadata for audit replay
+  metadata     Json?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([projectId])
+  @@index([milestoneId])
   @@map("merge_events")
 }

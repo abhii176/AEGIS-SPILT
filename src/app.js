@@ -8,6 +8,7 @@ const projectsRoutes = require('./routes/projects');
 const vaultRoutes = require('./routes/vault');
 const mergeRoutes = require('./routes/merge');
 const adminDemoRoutes = require('./routes/adminDemo');
+const webhooksRoutes = require('./routes/webhooks');
 
 function createApp() {
   const app = express();
@@ -15,6 +16,18 @@ function createApp() {
   app.set('trust proxy', true);
   app.use(cors());
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+  // GitHub webhooks need the raw body for HMAC verification
+  app.use(
+    '/api/webhooks',
+    express.json({
+      verify: (req, _res, buf) => {
+        req.rawBody = Buffer.from(buf);
+      },
+    }),
+    webhooksRoutes
+  );
+
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 

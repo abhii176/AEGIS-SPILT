@@ -57,6 +57,18 @@ const env = {
 
   /// Shared secret for POST /api/admin/demo/... hackathon triggers (header X-Demo-Admin-Key)
   demoAdminKey: optional('DEMO_ADMIN_KEY', 'hackathon-demo-key'),
+
+  github: {
+    /// HMAC secret for X-Hub-Signature-256 on POST /api/webhooks/github
+    webhookSecret: optional('GITHUB_WEBHOOK_SECRET'),
+    /// PAT or installation token to fetch PR diffs (optional when demo stubs a diff)
+    token: optional('GITHUB_TOKEN'),
+    apiBaseUrl: optional('GITHUB_API_BASE_URL', 'https://api.github.com'),
+    /// Optional GitHub App placeholders (wire later; webhook HMAC still uses webhookSecret)
+    appId: optional('GITHUB_APP_ID'),
+    appPrivateKey: optional('GITHUB_APP_PRIVATE_KEY'),
+    appInstallationId: optional('GITHUB_APP_INSTALLATION_ID'),
+  },
 };
 
 module.exports = { env };

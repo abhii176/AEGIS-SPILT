@@ -9,7 +9,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "test": "node src/services/kyc/index.test.js && node src/lib/projectValidation.test.js && node src/services/paypal/paypal.test.js"
+    "test": "node src/services/kyc/index.test.js && node src/lib/projectValidation.test.js && node src/services/paypal/paypal.test.js && node src/services/github/github.test.js"
   },
   "engines": {
     "node": ">=18"

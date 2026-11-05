@@ -2,6 +2,7 @@ const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
 const { releaseMilestone, requireDemoAdmin } = require('../controllers/payoutsController');
+const { simulateMerge } = require('../controllers/githubWebhookController');
 
 const router = express.Router();
 
@@ -15,6 +16,17 @@ router.post(
   requireKycAndConsent,
   requireDemoAdmin,
   releaseMilestone
+);
+
+/**
+ * Simulate a GitHub PR merge → AI audit → PayPal release without a public webhook URL.
+ */
+router.post(
+  '/milestones/:milestoneId/simulate-merge',
+  requireAuth,
+  requireKycAndConsent,
+  requireDemoAdmin,
+  simulateMerge
 );
 
 module.exports = router;

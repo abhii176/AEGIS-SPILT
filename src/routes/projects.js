@@ -11,6 +11,7 @@ const {
   listMilestones,
 } = require('../controllers/milestonesController');
 const { releaseMilestone } = require('../controllers/payoutsController');
+const { linkGithubToMilestone } = require('../controllers/githubLinkController');
 
 const router = express.Router();
 
@@ -32,6 +33,16 @@ router.post(
   addMilestone
 );
 router.get('/:projectId/milestones', requireAuth, listMilestones);
+
+/**
+ * Link GitHub repo (+ optional PR) to a milestone — gated (code merge path).
+ */
+router.post(
+  '/:projectId/milestones/:milestoneId/github',
+  requireAuth,
+  requireKycAndConsent,
+  linkGithubToMilestone
+);
 
 /**
  * Release milestone payout (PayPal Payouts).
