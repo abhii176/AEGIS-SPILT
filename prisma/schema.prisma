@@ -51,6 +51,7 @@ enum VaultFundStatus {
   ORDER_CREATED
   CAPTURED
   FAILED
+  CANCELLED
 }
 
 model User {

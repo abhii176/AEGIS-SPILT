@@ -43,8 +43,10 @@ GET  /api/projects/:projectId/milestones
 POST /api/projects/:projectId/milestones/:milestoneId/github   # gated — link repo/PR
 POST /api/projects/:projectId/milestones/:milestoneId/release  # gated — PayPal Payouts
 
-POST /api/vault/fund                       # gated — PayPal Orders lock
-POST /api/vault/capture                    # gated — capture pending order
+POST /api/vault/fund                       # gated — create PayPal order + approve link
+POST /api/vault/capture                    # gated — capture after buyer approval
+GET  /api/vault/paypal/return?token=...    # PayPal return — capture if APPROVED
+GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund CANCELLED
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
 POST /api/admin/demo/milestones/:milestoneId/release         # gated + X-Demo-Admin-Key
 POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Admin-Key
@@ -59,14 +61,15 @@ POST /api/vault/fund
 {
   "projectId": "<project_cuid>",
   "milestoneId": "<optional_milestone_cuid>",
-  "amountCents": 50000,
-  "capture": true
+  "amountCents": 50000
 }
 ```
 
-- Omit `milestoneId` + `amountCents` → locks the sum of all `PENDING` milestones.
-- With `PAYPAL_AUTO_CAPTURE=true` (default) or `"capture": true`, the order is captured immediately (sandbox happy path).
-- Persist: `VaultFund.paypalOrderId` / `paypalCaptureId`, `Project.fundedStatus`, milestone → `FUNDED`.
+- Omit `milestoneId` + `amountCents` → creates an order for the sum of all `PENDING` milestones.
+- Default: **no auto-capture**. Response includes `paypal.approvalUrl` / `approveUrl` — redirect the buyer (sandbox personal account) to approve, then PayPal hits `GET /api/vault/paypal/return?token=ORDER_ID` which captures only if the order is `APPROVED`.
+- Cancel path: `GET /api/vault/paypal/cancel?token=ORDER_ID` marks the vault fund `CANCELLED`.
+- Opt-in immediate capture (`PAYPAL_AUTO_CAPTURE=true` or `"capture": true`) is for mock/local demos only; live sandbox returns `ORDER_NOT_APPROVED` without buyer approval.
+- Persist after capture: `VaultFund.paypalOrderId` / `paypalCaptureId`, `Project.fundedStatus`, milestone → `FUNDED`.
 
 ### Release milestone (payout)
 

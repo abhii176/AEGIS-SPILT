@@ -98,9 +98,46 @@ function createEscrowService({
     });
   }
 
+  async function markFundCaptured({ fund, orderId, captureId }) {
+    const updatedFund = await db.vaultFund.update({
+      where: { id: fund.id },
+      data: {
+        status: 'CAPTURED',
+        paypalOrderId: orderId,
+        paypalCaptureId: captureId,
+      },
+    });
+
+    if (fund.projectId) {
+      await db.project.update({
+        where: { id: fund.projectId },
+        data: {
+          paypalOrderId: orderId,
+          paypalCaptureId: captureId,
+        },
+      });
+
+      if (fund.milestoneId) {
+        await db.milestone.update({
+          where: { id: fund.milestoneId },
+          data: { status: 'FUNDED' },
+        });
+      } else {
+        await db.milestone.updateMany({
+          where: { projectId: fund.projectId, status: 'PENDING' },
+          data: { status: 'FUNDED' },
+        });
+      }
+      await refreshProjectFundedStatus(fund.projectId);
+    }
+
+    return updatedFund;
+  }
+
   /**
    * Create PayPal order to lock funds for a project or milestone.
-   * When autoCapture is true (sandbox demo default), captures immediately after create.
+   * Default: create order + return approvalUrl; capture only after buyer approves (return callback).
+   * Opt-in autoCapture (env / body) is for mock/local demos only — live sandbox needs approve first.
    */
   async function fundProjectVault({
     userId,
@@ -109,8 +146,8 @@ function createEscrowService({
     amountCents = null,
     currency,
     autoCapture = env.paypal.autoCapture,
-    returnUrl = `${env.appBaseUrl}/api/vault/return`,
-    cancelUrl = `${env.appBaseUrl}/api/vault/cancel`,
+    returnUrl = env.paypal.returnUrl,
+    cancelUrl = env.paypal.cancelUrl,
   }) {
     const project = await db.project.findUnique({
       where: { id: String(projectId) },
@@ -209,21 +246,32 @@ function createEscrowService({
         captureId,
         orderStatus,
         approvalUrl: order.approvalUrl,
+        returnUrl,
+        cancelUrl,
         autoCapture: Boolean(autoCapture),
       },
     };
   }
 
+  async function findVaultFund({ vaultFundId, orderId }) {
+    if (vaultFundId) {
+      return db.vaultFund.findUnique({ where: { id: String(vaultFundId) } });
+    }
+    if (orderId) {
+      return db.vaultFund.findFirst({
+        where: { paypalOrderId: String(orderId) },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    return null;
+  }
+
   /**
-   * Capture a previously created order (when autoCapture was false).
+   * Capture a previously created order after buyer approval.
+   * Verifies PayPal order status is APPROVED (or COMPLETED) before calling capture.
    */
-  async function captureVaultOrder({ userId, vaultFundId, orderId }) {
-    const fund = vaultFundId
-      ? await db.vaultFund.findUnique({ where: { id: String(vaultFundId) } })
-      : await db.vaultFund.findFirst({
-          where: { paypalOrderId: String(orderId) },
-          orderBy: { createdAt: 'desc' },
-        });
+  async function captureVaultOrder({ userId = null, vaultFundId, orderId, requireApproved = true }) {
+    const fund = await findVaultFund({ vaultFundId, orderId });
 
     if (!fund) {
       const err = new Error('Vault fund not found');
@@ -231,7 +279,7 @@ function createEscrowService({
       err.code = 'vault_fund_not_found';
       throw err;
     }
-    if (fund.userId !== userId) {
+    if (userId && fund.userId !== userId) {
       const err = new Error('Forbidden');
       err.status = 403;
       err.code = 'forbidden';
@@ -240,43 +288,97 @@ function createEscrowService({
     if (fund.status === 'CAPTURED') {
       return { vaultFund: fund, alreadyCaptured: true };
     }
+    if (fund.status === 'CANCELLED') {
+      const err = new Error('Vault fund was cancelled');
+      err.status = 409;
+      err.code = 'vault_fund_cancelled';
+      throw err;
+    }
 
     const targetOrderId = orderId || fund.paypalOrderId;
+    if (!targetOrderId) {
+      const err = new Error('PayPal order id missing on vault fund');
+      err.status = 400;
+      err.code = 'missing_order_id';
+      throw err;
+    }
+
+    if (requireApproved && typeof paypal.getOrder === 'function') {
+      const existing = await paypal.getOrder(targetOrderId);
+      const status = String(existing.status || '').toUpperCase();
+      if (status === 'COMPLETED') {
+        const captureId =
+          existing.raw?.purchase_units?.[0]?.payments?.captures?.[0]?.id ||
+          fund.paypalCaptureId ||
+          existing.id;
+        const updatedFund = await markFundCaptured({ fund, orderId: targetOrderId, captureId });
+        return {
+          vaultFund: updatedFund,
+          alreadyCaptured: true,
+          paypal: { id: targetOrderId, status, captureId },
+        };
+      }
+      if (status !== 'APPROVED') {
+        const err = new Error(
+          `PayPal order is ${status || 'unknown'}; payer must approve before capture`
+        );
+        err.status = 422;
+        err.code = 'order_not_approved';
+        err.details = { orderId: targetOrderId, orderStatus: status, approvalUrl: fund.approvalUrl };
+        throw err;
+      }
+    }
+
     const captured = await paypal.captureOrder(targetOrderId);
+    const updatedFund = await markFundCaptured({
+      fund,
+      orderId: targetOrderId,
+      captureId: captured.captureId,
+    });
+
+    return { vaultFund: updatedFund, alreadyCaptured: false, paypal: captured };
+  }
+
+  /**
+   * PayPal return callback: token=ORDER_ID → verify APPROVED → capture → update vault/project/milestone.
+   */
+  async function completeVaultAfterApproval({ orderId }) {
+    if (!orderId) {
+      const err = new Error('PayPal token (order id) is required');
+      err.status = 400;
+      err.code = 'token_required';
+      throw err;
+    }
+    return captureVaultOrder({ orderId: String(orderId), requireApproved: true });
+  }
+
+  /**
+   * PayPal cancel callback: mark ORDER_CREATED / PENDING fund as CANCELLED.
+   */
+  async function cancelVaultFund({ orderId, vaultFundId }) {
+    const fund = await findVaultFund({ vaultFundId, orderId });
+    if (!fund) {
+      const err = new Error('Vault fund not found');
+      err.status = 404;
+      err.code = 'vault_fund_not_found';
+      throw err;
+    }
+    if (fund.status === 'CAPTURED') {
+      const err = new Error('Cannot cancel a captured vault fund');
+      err.status = 409;
+      err.code = 'vault_fund_already_captured';
+      throw err;
+    }
+    if (fund.status === 'CANCELLED') {
+      return { vaultFund: fund, alreadyCancelled: true };
+    }
 
     const updatedFund = await db.vaultFund.update({
       where: { id: fund.id },
-      data: {
-        status: 'CAPTURED',
-        paypalOrderId: targetOrderId,
-        paypalCaptureId: captured.captureId,
-      },
+      data: { status: 'CANCELLED' },
     });
 
-    if (fund.projectId) {
-      await db.project.update({
-        where: { id: fund.projectId },
-        data: {
-          paypalOrderId: targetOrderId,
-          paypalCaptureId: captured.captureId,
-        },
-      });
-
-      if (fund.milestoneId) {
-        await db.milestone.update({
-          where: { id: fund.milestoneId },
-          data: { status: 'FUNDED' },
-        });
-      } else {
-        await db.milestone.updateMany({
-          where: { projectId: fund.projectId, status: 'PENDING' },
-          data: { status: 'FUNDED' },
-        });
-      }
-      await refreshProjectFundedStatus(fund.projectId);
-    }
-
-    return { vaultFund: updatedFund, alreadyCaptured: false, paypal: captured };
+    return { vaultFund: updatedFund, alreadyCancelled: false };
   }
 
   /**
@@ -334,6 +436,7 @@ function createEscrowService({
     const email =
       String(recipientEmail || '').trim() ||
       milestone.project.freelancer.paypalEmail ||
+      env.paypal.payoutEmail ||
       milestone.project.freelancer.email;
 
     const payout = await paypal.createPayout({
@@ -380,6 +483,8 @@ function createEscrowService({
   return {
     fundProjectVault,
     captureVaultOrder,
+    completeVaultAfterApproval,
+    cancelVaultFund,
     releaseMilestone,
     refreshProjectFundedStatus,
     resolveFundAmount,

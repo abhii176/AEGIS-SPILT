@@ -17,6 +17,7 @@ function createPaypalService(options = {}) {
     payouts,
     isMock: () => client.isMock(),
     createOrder: (...args) => orders.createOrder(...args),
+    getOrder: (...args) => orders.getOrder(...args),
     captureOrder: (...args) => orders.captureOrder(...args),
     createPayout: (...args) => payouts.createPayout(...args),
   };
