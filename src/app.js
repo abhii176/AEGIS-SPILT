@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -12,6 +13,7 @@ const webhooksRoutes = require('./routes/webhooks');
 
 function createApp() {
   const app = express();
+  const publicDir = path.join(__dirname, '..', 'public');
 
   app.set('trust proxy', true);
   app.use(cors());
@@ -41,6 +43,9 @@ function createApp() {
   app.use('/api/vault', vaultRoutes);
   app.use('/api/merge', mergeRoutes);
   app.use('/api/admin/demo', adminDemoRoutes);
+
+  // Hackathon demo UI (static) — after API so /api/* stays JSON
+  app.use(express.static(publicDir));
 
   app.use((err, _req, res, _next) => {
     const status = err.status || err.statusCode || 500;

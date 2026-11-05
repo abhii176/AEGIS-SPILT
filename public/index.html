@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aegis-Split — Escrow that pays when the code ships</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="orb orb-a"></div>
+      <div class="orb orb-b"></div>
+      <div class="grid-wash"></div>
+    </div>
+
+    <header class="topbar">
+      <a class="brand-mark" href="#landing" data-nav="landing">Aegis-Split</a>
+      <nav class="step-rail" id="step-rail" aria-label="Demo steps"></nav>
+      <div class="session-chip" id="session-chip" hidden>
+        <span id="session-name">—</span>
+        <button type="button" class="text-btn" id="btn-switch-user">Switch</button>
+      </div>
+    </header>
+
+    <main id="app">
+      <!-- LANDING -->
+      <section class="panel active" id="panel-landing" data-step="landing">
+        <div class="hero">
+          <p class="brand-hero">Aegis-Split</p>
+          <h1 class="hero-line">Money locked. Code proven. Paid.</h1>
+          <p class="hero-sub">
+            Walk the Rohan ↔ Sarah story: verify, fund a milestone, merge on GitHub, watch AI release the vault.
+          </p>
+          <div class="cta-row">
+            <button type="button" class="btn primary" data-go="users">Start demo</button>
+            <a class="btn ghost" href="#users" data-go="users">Skip intro</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- USERS -->
+      <section class="panel" id="panel-users" data-step="users">
+        <div class="step-frame">
+          <p class="step-kicker">Step 1</p>
+          <h2>Pick who you are</h2>
+          <p class="step-lead">Seed Sarah (client) and Rohan (freelancer), then act as one via the auth stub.</p>
+          <div class="persona-row" id="persona-row">
+            <button type="button" class="persona" data-persona="sarah" disabled>
+              <span class="persona-role">Client</span>
+              <span class="persona-name">Sarah Chen</span>
+              <span class="persona-meta">Funds the vault</span>
+            </button>
+            <button type="button" class="persona" data-persona="rohan" disabled>
+              <span class="persona-role">Freelancer</span>
+              <span class="persona-name">Rohan Mehta</span>
+              <span class="persona-meta">Ships + gets paid</span>
+            </button>
+          </div>
+          <div class="action-row">
+            <button type="button" class="btn primary" id="btn-seed-users">Seed Sarah &amp; Rohan</button>
+            <button type="button" class="btn ghost" data-go="verify" id="btn-users-next" disabled>Continue</button>
+          </div>
+          <pre class="log" id="log-users" hidden></pre>
+        </div>
+      </section>
+
+      <!-- VERIFY + CONSENT -->
+      <section class="panel" id="panel-verify" data-step="verify">
+        <div class="step-frame">
+          <p class="step-kicker">Step 2</p>
+          <h2>Gov ID + monitoring consent</h2>
+          <p class="step-lead">
+            Both gates must pass before projects, funding, or merges. Demo scaffolds DigiLocker (IN) / Stripe Identity (intl).
+          </p>
+          <div class="status-strip" id="verify-status">
+            <div class="pill" data-flag="kyc">Gov ID <strong>—</strong></div>
+            <div class="pill" data-flag="consent">Consent <strong>—</strong></div>
+          </div>
+          <div class="action-row">
+            <button type="button" class="btn primary" id="btn-verify-id">Verify government ID</button>
+            <button type="button" class="btn secondary" id="btn-consent">Grant monitoring consent</button>
+            <button type="button" class="btn ghost" data-go="project" id="btn-verify-next" disabled>Continue</button>
+          </div>
+          <pre class="log" id="log-verify" hidden></pre>
+        </div>
+      </section>
+
+      <!-- PROJECT + MILESTONE -->
+      <section class="panel" id="panel-project" data-step="project">
+        <div class="step-frame">
+          <p class="step-kicker">Step 3</p>
+          <h2>Create project &amp; milestone</h2>
+          <p class="step-lead">Sarah hires Rohan. Milestone 1 locks $250 until acceptance criteria pass.</p>
+          <form class="form-stack" id="form-project">
+            <label>
+              Project title
+              <input name="title" value="Auth service MVP" required />
+            </label>
+            <label>
+              Milestone title
+              <input name="milestoneTitle" value="Milestone 1 — Login + session" required />
+            </label>
+            <label>
+              Amount (USD)
+              <input name="amountUsd" type="number" min="1" step="1" value="250" required />
+            </label>
+            <label>
+              Acceptance criteria
+              <textarea name="acceptanceCriteria" rows="3" required>Ship hero CTA; login form; session cookie; Lighthouse a11y >= 90</textarea>
+            </label>
+            <div class="action-row">
+              <button type="submit" class="btn primary">Create project + milestone</button>
+              <button type="button" class="btn ghost" data-go="fund" id="btn-project-next" disabled>Continue</button>
+            </div>
+          </form>
+          <pre class="log" id="log-project" hidden></pre>
+        </div>
+      </section>
+
+      <!-- FUND VAULT -->
+      <section class="panel" id="panel-fund" data-step="fund">
+        <div class="step-frame">
+          <p class="step-kicker">Step 4</p>
+          <h2>Fund the vault</h2>
+          <p class="step-lead">
+            Creates a PayPal order and returns an approval URL. After sandbox approve, PayPal hits
+            <code>/api/vault/paypal/return</code> (capture) or <code>/api/vault/paypal/cancel</code>.
+          </p>
+          <label class="check-inline">
+            <input type="checkbox" id="fund-capture" checked />
+            Auto-capture now (recommended for <code>PAYPAL_MOCK=true</code>; uncheck for live sandbox approve → return)
+          </label>
+          <div class="action-row">
+            <button type="button" class="btn primary" id="btn-fund">Fund milestone</button>
+            <a class="btn secondary" id="link-approve" href="#" target="_blank" rel="noopener" hidden>Open PayPal approve</a>
+            <button type="button" class="btn ghost" data-go="github" id="btn-fund-next" disabled>Continue</button>
+          </div>
+          <pre class="log" id="log-fund" hidden></pre>
+        </div>
+      </section>
+
+      <!-- GITHUB -->
+      <section class="panel" id="panel-github" data-step="github">
+        <div class="step-frame">
+          <p class="step-kicker">Step 5</p>
+          <h2>Link GitHub to the milestone</h2>
+          <p class="step-lead">Rohan connects the repo and PR that will prove the work.</p>
+          <form class="form-stack" id="form-github">
+            <label>
+              Repo (owner/name)
+              <input name="repo" value="demo/aegis-auth" required pattern="[\w.-]+/[\w.-]+" />
+            </label>
+            <label>
+              PR number
+              <input name="pr" type="number" min="1" value="1" required />
+            </label>
+            <div class="action-row">
+              <button type="submit" class="btn primary">Link GitHub</button>
+              <button type="button" class="btn ghost" data-go="audit" id="btn-github-next" disabled>Continue</button>
+            </div>
+          </form>
+          <pre class="log" id="log-github" hidden></pre>
+        </div>
+      </section>
+
+      <!-- AUDIT / MERGE -->
+      <section class="panel" id="panel-audit" data-step="audit">
+        <div class="step-frame">
+          <p class="step-kicker">Step 6</p>
+          <h2>Simulate merge → AI audit</h2>
+          <p class="step-lead">
+            Uses <code>DEMO_ADMIN_KEY</code> to fake a merged PR, run the auditor, and release payout on PASS.
+          </p>
+          <div class="action-row">
+            <button type="button" class="btn primary" id="btn-simulate">Simulate merge</button>
+            <button type="button" class="btn ghost" data-go="paid" id="btn-audit-next" disabled>See payout</button>
+          </div>
+          <div class="audit-board" id="audit-board" hidden>
+            <p class="audit-verdict" id="audit-verdict"></p>
+            <ul class="audit-checks" id="audit-checks"></ul>
+            <pre class="audit-report" id="audit-report"></pre>
+          </div>
+          <pre class="log" id="log-audit" hidden></pre>
+        </div>
+      </section>
+
+      <!-- PAID -->
+      <section class="panel" id="panel-paid" data-step="paid">
+        <div class="step-frame finale">
+          <p class="step-kicker">Step 7</p>
+          <h2>Released</h2>
+          <p class="step-lead">Milestone status after AI pass + PayPal Payouts.</p>
+          <div class="paid-hero" id="paid-hero">
+            <p class="paid-amount" id="paid-amount">—</p>
+            <p class="paid-status" id="paid-status">Waiting for audit…</p>
+            <dl class="paid-meta" id="paid-meta"></dl>
+          </div>
+          <div class="action-row">
+            <button type="button" class="btn secondary" id="btn-refresh-paid">Refresh status</button>
+            <button type="button" class="btn ghost" data-go="landing">Back to start</button>
+          </div>
+          <pre class="log" id="log-paid" hidden></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <span>Demo UI · Express API on same origin</span>
+      <span id="health-dot" title="API health">●</span>
+    </footer>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

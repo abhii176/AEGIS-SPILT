@@ -1,5 +1,6 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
+const { publicUser } = require('../controllers/demoUsersController');
 const {
   startVerifyIdentity,
   digilockerCallback,
@@ -7,6 +8,11 @@ const {
 } = require('../controllers/verifyIdentityController');
 
 const router = express.Router();
+
+/** GET /api/auth/me — current stub user (X-User-Id) for the demo UI */
+router.get('/me', requireAuth, (req, res) => {
+  res.status(200).json({ user: publicUser(req.user) });
+});
 
 /**
  * POST /api/auth/verify-identity
