@@ -62,12 +62,11 @@ async function githubWebhook(req, res, next) {
     const mergeSha = pr.merge_commit_sha || pr.head?.sha || null;
     const mergedAt = pr.merged_at || null;
 
-    // Optional demo/hackathon: allow embedding a diff stub in the webhook payload
+    // Optional demo/hackathon: embed a diff stub (do not use PR description as audit input)
     const diffStub =
       payload.diff ||
       payload.diff_stub ||
       payload.aegis_diff ||
-      pr.body ||
       null;
 
     const result = await mergeHandler.handleMergedPullRequest({
@@ -94,13 +93,18 @@ async function githubWebhook(req, res, next) {
       alreadyFailed: Boolean(result.alreadyFailed),
     });
   } catch (err) {
-    if (err.code === 'milestone_not_linked') {
-      // Ack webhook so GitHub does not retry forever when no milestone is linked yet
+    // Ack business/KYC misses with 200 so GitHub does not retry forever
+    if (
+      err.code === 'milestone_not_linked' ||
+      err.code === 'kyc_or_consent_required' ||
+      err.code === 'milestone_not_funded'
+    ) {
       return res.status(200).json({
         ok: true,
         handled: false,
         error: err.code,
         message: err.message,
+        details: err.details || undefined,
       });
     }
     return next(err);

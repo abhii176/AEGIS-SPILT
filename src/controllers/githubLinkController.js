@@ -64,10 +64,8 @@ async function linkGithubToMilestone(req, res, next) {
       resolvedPrUrl = `https://github.com/${repo}/pull/${prNum}`;
     }
 
-    const nextStatus =
-      milestone.status === 'FUNDED' || milestone.status === 'PENDING'
-        ? 'IN_PROGRESS'
-        : milestone.status;
+    // Only advance FUNDED → IN_PROGRESS; never imply work started on an unfunded milestone
+    const nextStatus = milestone.status === 'FUNDED' ? 'IN_PROGRESS' : milestone.status;
 
     const updated = await prisma.milestone.update({
       where: { id: milestone.id },

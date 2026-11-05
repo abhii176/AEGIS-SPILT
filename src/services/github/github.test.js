@@ -242,6 +242,28 @@ async function testMergeHandlerMissingMilestone() {
   );
 }
 
+async function testMergeHandlerRejectsUnfunded() {
+  const db = makeMockDb({ milestone: { status: 'PENDING' } });
+  const handler = createMergeHandler({
+    db,
+    escrow: {
+      releaseMilestone: async () => {
+        throw new Error('should not release unfunded');
+      },
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      handler.handleMergedPullRequest({
+        repoFullName: 'acme/landing',
+        prNumber: 7,
+        diff: '+ Ship hero CTA lighthouse',
+      }),
+    (err) => err.code === 'milestone_not_funded' && err.status === 409
+  );
+}
+
 async function run() {
   testSignatureRoundTrip();
   testSignatureRejectsWrongLength();
@@ -250,6 +272,7 @@ async function run() {
   await testMergeHandlerFailMarksFailed();
   await testMergeHandlerBlocksWithoutKyc();
   await testMergeHandlerMissingMilestone();
+  await testMergeHandlerRejectsUnfunded();
   console.log('github webhook + merge handler tests passed');
 }
 

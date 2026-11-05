@@ -3,6 +3,15 @@ const { createEscrowService } = require('../paypal/escrow');
 const { createGithubClient } = require('./client');
 const aiAuditor = require('../aiAuditor');
 
+/** Statuses that imply escrow was locked before merge audit/release */
+const MERGEABLE_STATUSES = new Set([
+  'FUNDED',
+  'IN_PROGRESS',
+  'SUBMITTED',
+  'AUDITING',
+  'PASSED',
+]);
+
 /**
  * Resolve a linked milestone from repo + PR, run AI audit stub, then release or fail.
  * Used by GitHub webhook + admin/demo simulate-merge.
@@ -101,6 +110,25 @@ function createMergeHandler({
       };
     }
 
+    // Idempotent: same merge SHA already audited/released path
+    if (
+      mergeSha &&
+      milestone.githubMergeSha &&
+      String(mergeSha) === String(milestone.githubMergeSha) &&
+      milestone.auditPassed != null
+    ) {
+      return {
+        alreadyReleased: milestone.auditPassed === true && ['PASSED', 'RELEASED', 'PAID'].includes(milestone.status),
+        alreadyFailed: milestone.auditPassed === false,
+        milestone,
+        audit: {
+          passed: milestone.auditPassed,
+          report: milestone.auditReport,
+        },
+        payout: null,
+      };
+    }
+
     if (milestone.status === 'FAILED' && milestone.auditPassed === false) {
       return {
         alreadyFailed: true,
@@ -111,6 +139,15 @@ function createMergeHandler({
         },
         payout: null,
       };
+    }
+
+    if (!MERGEABLE_STATUSES.has(milestone.status)) {
+      const err = new Error(
+        `Milestone status ${milestone.status} cannot be merge-audited (fund escrow first; need FUNDED…PASSED)`
+      );
+      err.status = 409;
+      err.code = 'milestone_not_funded';
+      throw err;
     }
 
     const kyc = partiesHaveKycAndConsent(milestone.project);
@@ -243,7 +280,8 @@ function createMergeHandler({
     handleMergedPullRequest,
     findLinkedMilestone,
     partiesHaveKycAndConsent,
+    MERGEABLE_STATUSES,
   };
 }
 
-module.exports = { createMergeHandler };
+module.exports = { createMergeHandler, MERGEABLE_STATUSES };
