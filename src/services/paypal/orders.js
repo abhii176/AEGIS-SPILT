@@ -46,11 +46,21 @@ function createOrdersService(client = createPaypalClient()) {
 
     if (client.isMock()) {
       const orderId = `MOCK-ORDER-${referenceId || Date.now()}`;
+      const approveHref = `https://www.sandbox.paypal.com/checkoutnow?token=${orderId}`;
       return {
         id: orderId,
         status: 'CREATED',
-        approvalUrl: `https://www.sandbox.paypal.com/checkoutnow?token=${orderId}`,
-        raw: { mock: true, amount: { currency_code: currencyCode, value } },
+        approvalUrl: approveHref,
+        links: [
+          { rel: 'approve', href: approveHref },
+          ...(returnUrl ? [{ rel: 'return', href: returnUrl }] : []),
+          ...(cancelUrl ? [{ rel: 'cancel', href: cancelUrl }] : []),
+        ],
+        raw: {
+          mock: true,
+          amount: { currency_code: currencyCode, value },
+          application_context: { return_url: returnUrl, cancel_url: cancelUrl },
+        },
       };
     }
 
@@ -67,6 +77,7 @@ function createOrdersService(client = createPaypalClient()) {
         },
       ],
       application_context: {
+        brand_name: 'Aegis-Split',
         shipping_preference: 'NO_SHIPPING',
         user_action: 'PAY_NOW',
         return_url: returnUrl,
@@ -79,6 +90,34 @@ function createOrdersService(client = createPaypalClient()) {
       id: order.id,
       status: order.status,
       approvalUrl: pickApprovalUrl(order),
+      links: order.links || [],
+      raw: order,
+    };
+  }
+
+  async function getOrder(orderId) {
+    if (!orderId) {
+      const err = new Error('orderId is required');
+      err.status = 400;
+      err.code = 'invalid_order_id';
+      throw err;
+    }
+
+    if (client.isMock()) {
+      return {
+        id: orderId,
+        status: 'APPROVED',
+        approvalUrl: `https://www.sandbox.paypal.com/checkoutnow?token=${orderId}`,
+        raw: { mock: true, id: orderId, status: 'APPROVED' },
+      };
+    }
+
+    const order = await client.request('GET', `/v2/checkout/orders/${orderId}`);
+    return {
+      id: order.id,
+      status: order.status,
+      approvalUrl: pickApprovalUrl(order),
+      links: order.links || [],
       raw: order,
     };
   }
@@ -113,6 +152,7 @@ function createOrdersService(client = createPaypalClient()) {
 
   return {
     createOrder,
+    getOrder,
     captureOrder,
     centsToAmountValue,
     pickApprovalUrl,

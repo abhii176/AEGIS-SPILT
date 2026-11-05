@@ -51,6 +51,7 @@ function createApp() {
     res.status(status).json({
       error: err.code || 'internal_error',
       message: err.message || 'Unexpected error',
+      ...(err.details ? { details: err.details } : {}),
     });
   });
 

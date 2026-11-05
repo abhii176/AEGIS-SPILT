@@ -50,9 +50,24 @@ const env = {
     mock:
       String(optional('PAYPAL_MOCK', '')).toLowerCase() === 'true' ||
       optional('PAYPAL_MOCK') === '1',
-    /// Hackathon default: create order then capture immediately (no buyer redirect UI required)
+    /// Default false: create order → buyer approves → capture on return (avoids ORDER_NOT_APPROVED).
+    /// Set PAYPAL_AUTO_CAPTURE=true only for mock/local demos that skip the approve redirect.
     autoCapture:
-      String(optional('PAYPAL_AUTO_CAPTURE', 'true')).toLowerCase() !== 'false',
+      String(optional('PAYPAL_AUTO_CAPTURE', 'false')).toLowerCase() === 'true' ||
+      optional('PAYPAL_AUTO_CAPTURE') === '1',
+    /// PayPal buyer return/cancel URLs (Orders application_context)
+    returnUrl: optional(
+      'PAYPAL_RETURN_URL',
+      `${optional('APP_BASE_URL', 'http://localhost:3000')}/api/vault/paypal/return`
+    ),
+    cancelUrl: optional(
+      'PAYPAL_CANCEL_URL',
+      `${optional('APP_BASE_URL', 'http://localhost:3000')}/api/vault/paypal/cancel`
+    ),
+    /// Optional sandbox personal (buyer) email for demo docs — never a password
+    buyerEmail: optional('PAYPAL_BUYER_EMAIL'),
+    /// Optional default payout recipient when freelancer.paypalEmail unset
+    payoutEmail: optional('PAYPAL_PAYOUT_EMAIL'),
   },
 
   /// Shared secret for POST /api/admin/demo/... hackathon triggers (header X-Demo-Admin-Key)
