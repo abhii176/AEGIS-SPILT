@@ -3,8 +3,19 @@ const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
 const { releaseMilestone, requireDemoAdmin } = require('../controllers/payoutsController');
 const { simulateMerge } = require('../controllers/githubWebhookController');
+const {
+  seedDemoUsers,
+  listDemoUsers,
+  requireDemoAdminKey,
+} = require('../controllers/demoUsersController');
 
 const router = express.Router();
+
+/**
+ * Seed / list Sarah + Rohan (no X-User-Id yet — demo key only).
+ */
+router.post('/users/seed', requireDemoAdminKey, seedDemoUsers);
+router.get('/users', requireDemoAdminKey, listDemoUsers);
 
 /**
  * Hackathon demo trigger: release milestone payout without waiting for AI auditor.

@@ -11,6 +11,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
 | **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
 | **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
+| **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
 
 ## Setup
 
@@ -19,17 +20,35 @@ cp .env.example .env
 # set DATABASE_URL, KYC placeholders, PayPal sandbox credentials,
 # and GITHUB_WEBHOOK_SECRET / GITHUB_TOKEN (or use demo simulate-merge)
 # or set PAYPAL_MOCK=true for local demo without PayPal credentials
+# DEMO_ADMIN_KEY defaults to hackathon-demo-key (simulate-merge + seed users)
 npm install
 npx prisma migrate deploy
 # or: npx prisma migrate dev
-npm run dev
+npm start
+# open http://localhost:3000  — demo UI + API on the same origin
+# (or: npm run dev for watch mode)
 ```
 
-Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until sessions land.
+Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until sessions land. The demo UI sets this when you pick Sarah or Rohan.
+
+### Demo UI (judges)
+
+1. `npm start` → open `http://localhost:3000`
+2. **Seed Sarah & Rohan** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
+3. Switch user → verify gov ID + monitoring consent
+4. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
+5. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
+
+PayPal browser return/cancel (no auth header):
+
+- Return / capture: `GET /api/vault/paypal/return?token=ORDER_ID`
+- Cancel: `GET /api/vault/paypal/cancel?token=ORDER_ID`
 
 ## Key routes
 
 ```
+GET  /                                 # demo UI (static)
+GET  /api/auth/me                      # stub user for X-User-Id
 POST /api/auth/verify-identity
 GET  /api/auth/verify-identity/callback/digilocker
 GET  /api/auth/verify-identity/callback/stripe
@@ -48,6 +67,8 @@ POST /api/vault/capture                    # gated — capture after buyer appro
 GET  /api/vault/paypal/return?token=...    # PayPal return — capture if APPROVED
 GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund CANCELLED
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
+POST /api/admin/demo/users/seed            # seed Sarah + Rohan (X-Demo-Admin-Key)
+GET  /api/admin/demo/users                # list demo users (X-Demo-Admin-Key)
 POST /api/admin/demo/milestones/:milestoneId/release         # gated + X-Demo-Admin-Key
 POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Admin-Key
 POST /api/merge                             # gated
