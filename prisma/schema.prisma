@@ -76,6 +76,7 @@ model User {
   projectsAsFreelancer  Project[]     @relation("ProjectFreelancer")
   vaultFunds            VaultFund[]
   mergeEvents           MergeEvent[]
+  notifications         Notification[]
 
   @@map("users")
 }
@@ -120,9 +121,10 @@ model Project {
 
   client     User        @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
   freelancer User        @relation("ProjectFreelancer", fields: [freelancerId], references: [id], onDelete: Restrict)
-  milestones Milestone[]
-  vaultFunds VaultFund[]
-  mergeEvents MergeEvent[]
+  milestones    Milestone[]
+  vaultFunds    VaultFund[]
+  mergeEvents   MergeEvent[]
+  notifications Notification[]
 
   @@index([clientId])
   @@index([freelancerId])
@@ -171,9 +173,10 @@ model Milestone {
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
 
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  vaultFunds  VaultFund[]
-  mergeEvents MergeEvent[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  vaultFunds    VaultFund[]
+  mergeEvents   MergeEvent[]
+  notifications Notification[]
 
   @@index([projectId])
   @@index([status])
@@ -233,4 +236,29 @@ model MergeEvent {
   @@index([projectId])
   @@index([milestoneId])
   @@map("merge_events")
+}
+
+/// In-app alerts for funded vault, AI audit result, and payout release.
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  /// FUNDED | AUDIT_PASSED | AUDIT_FAILED | PAID
+  type        String
+  message     String
+  projectId   String?   @map("project_id")
+  milestoneId String?   @map("milestone_id")
+  /// Idempotency key per user (e.g. FUNDED:<milestoneId>)
+  dedupeKey   String?   @map("dedupe_key")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, createdAt])
+  @@index([projectId])
+  @@index([milestoneId])
+  @@map("notifications")
 }

@@ -11,6 +11,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
 | **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
 | **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
+| **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID alerts (idempotent); demo bell + toasts |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
 
 ## Setup
@@ -66,6 +67,8 @@ POST /api/vault/fund                       # gated — create PayPal order + app
 POST /api/vault/capture                    # gated — capture after buyer approval
 GET  /api/vault/paypal/return?token=...    # PayPal return — capture if APPROVED
 GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund CANCELLED
+GET  /api/notifications                    # list for X-User-Id (optional ?unread=true)
+POST /api/notifications/mark-read          # { notificationIds } or { all: true }
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
 POST /api/admin/demo/users/seed            # seed Sarah + Rohan (X-Demo-Admin-Key)
 GET  /api/admin/demo/users                # list demo users (X-Demo-Admin-Key)
@@ -74,6 +77,16 @@ POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Ad
 POST /api/merge                             # gated
 GET  /health
 ```
+
+### Notifications
+
+Persisted for **both** client and freelancer when:
+
+1. Vault/milestone **FUNDED** (after capture / auto-capture)
+2. AI audit completes (**AUDIT_PASSED** or **AUDIT_FAILED**)
+3. Milestone **PAID** (PayPal payout release)
+
+Idempotent via `dedupeKey` (`TYPE:milestoneOrProjectId:userId`) so retries and double-capture do not spam. Demo UI: bell in the top bar + toast after fund / simulate-merge / paid refresh.
 
 ### Fund vault (lock escrow)
 
