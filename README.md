@@ -14,6 +14,18 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID alerts (idempotent); demo bell + toasts |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
 
+## Deploy (public HTTPS for judges)
+
+See **[DEPLOY.md](./DEPLOY.md)** for one-click paths:
+
+- **Render Blueprint** (`render.yaml`) + **Neon** free Postgres — preferred
+- **Railway** (`railway.toml` + Dockerfile)
+- **Fly.io** (`fly.toml`) when `FLY_API_TOKEN` is available
+
+Docker image runs `prisma migrate deploy` on boot. Blueprint defaults: `PAYPAL_MOCK=true`, `DEMO_ADMIN_KEY=hackathon-demo-key`.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://dashboard.render.com/blueprints/new?repo=https://github.com/abhii176/AEGIS-SPILT)
+
 ## Setup
 
 ```bash
@@ -28,6 +40,7 @@ npx prisma migrate deploy
 npm start
 # open http://localhost:3000  — demo UI + API on the same origin
 # (or: npm run dev for watch mode)
+# production-style: npm run start:prod  (migrate deploy + start)
 ```
 
 Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until sessions land. The demo UI sets this when you pick Sarah or Rohan.

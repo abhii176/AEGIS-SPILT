@@ -1,0 +1,19 @@
+# Railway one-click / CLI deploy
+# https://docs.railway.app/deploy/deployments
+#
+# Click path (no CLI token needed):
+# 1) https://railway.app/new → Deploy from GitHub → abhii176/AEGIS-SPILT
+# 2) Add plugin: Postgres (or paste Neon DATABASE_URL)
+# 3) Set variables below (PAYPAL_MOCK=true for judge demo)
+# 4) Generate domain → set APP_BASE_URL / PAYPAL_*_URL to that https URL
+# 5) Redeploy — Dockerfile entrypoint runs `prisma migrate deploy`
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

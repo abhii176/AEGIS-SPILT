@@ -7,10 +7,35 @@ function optional(name, fallback = '') {
   return process.env[name] || fallback;
 }
 
+/**
+ * Public origin for PayPal return/cancel and absolute links.
+ * Prefer APP_BASE_URL; else host-injected public URL (Render / Railway / Fly).
+ */
+function resolveAppBaseUrl() {
+  const explicit = optional('APP_BASE_URL');
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  const renderUrl = optional('RENDER_EXTERNAL_URL');
+  if (renderUrl) return renderUrl.replace(/\/$/, '');
+
+  const renderHost = optional('RENDER_EXTERNAL_HOSTNAME');
+  if (renderHost) return `https://${renderHost.replace(/\/$/, '')}`;
+
+  const railwayDomain = optional('RAILWAY_PUBLIC_DOMAIN');
+  if (railwayDomain) return `https://${railwayDomain.replace(/\/$/, '')}`;
+
+  const flyApp = optional('FLY_APP_NAME');
+  if (flyApp) return `https://${flyApp}.fly.dev`;
+
+  return 'http://localhost:3000';
+}
+
+const appBaseUrl = resolveAppBaseUrl();
+
 const env = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
-  appBaseUrl: optional('APP_BASE_URL', 'http://localhost:3000'),
+  appBaseUrl,
   databaseUrl: optional('DATABASE_URL'),
 
   digilocker: {
@@ -56,14 +81,8 @@ const env = {
       String(optional('PAYPAL_AUTO_CAPTURE', 'false')).toLowerCase() === 'true' ||
       optional('PAYPAL_AUTO_CAPTURE') === '1',
     /// PayPal buyer return/cancel URLs (Orders application_context)
-    returnUrl: optional(
-      'PAYPAL_RETURN_URL',
-      `${optional('APP_BASE_URL', 'http://localhost:3000')}/api/vault/paypal/return`
-    ),
-    cancelUrl: optional(
-      'PAYPAL_CANCEL_URL',
-      `${optional('APP_BASE_URL', 'http://localhost:3000')}/api/vault/paypal/cancel`
-    ),
+    returnUrl: optional('PAYPAL_RETURN_URL', `${appBaseUrl}/api/vault/paypal/return`),
+    cancelUrl: optional('PAYPAL_CANCEL_URL', `${appBaseUrl}/api/vault/paypal/cancel`),
     /// Optional sandbox personal (buyer) email for demo docs — never a password
     buyerEmail: optional('PAYPAL_BUYER_EMAIL'),
     /// Optional default payout recipient when freelancer.paypalEmail unset
