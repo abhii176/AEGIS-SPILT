@@ -1,6 +1,7 @@
 const { prisma } = require('../../lib/prisma');
 const { createEscrowService } = require('../paypal/escrow');
 const { createGithubClient } = require('./client');
+const { createNotificationService } = require('../notifications');
 const aiAuditor = require('../aiAuditor');
 
 /** Statuses that imply escrow was locked before merge audit/release */
@@ -21,6 +22,7 @@ function createMergeHandler({
   escrow = createEscrowService(),
   github = createGithubClient(),
   auditor = aiAuditor,
+  notifications = createNotificationService({ db }),
 } = {}) {
   function partiesHaveKycAndConsent(project) {
     const clientOk =
@@ -225,6 +227,23 @@ function createMergeHandler({
       audit.report ||
       `${audit.passed ? 'PASS' : 'FAIL'} — ${audit.reason || ''}`.trim();
 
+    async function emitAuditNotice(passed, milestoneRow) {
+      if (typeof notifications.notifyAudit !== 'function') return;
+      try {
+        await notifications.notifyAudit({
+          project: milestone.project,
+          milestone: milestoneRow,
+          passed,
+          reason: audit.reason || '',
+        });
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'test') {
+          // eslint-disable-next-line no-console
+          console.warn('[notifications] audit emit failed:', err.message || err);
+        }
+      }
+    }
+
     if (!audit.passed) {
       const failed = await db.milestone.update({
         where: { id: milestone.id },
@@ -235,6 +254,8 @@ function createMergeHandler({
           auditCheckedAt: new Date(),
         },
       });
+
+      await emitAuditNotice(false, failed);
 
       return {
         alreadyReleased: false,
@@ -254,6 +275,8 @@ function createMergeHandler({
         auditCheckedAt: new Date(),
       },
     });
+
+    await emitAuditNotice(true, passed);
 
     if (skipRelease) {
       return {

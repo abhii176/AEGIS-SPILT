@@ -10,6 +10,7 @@ const vaultRoutes = require('./routes/vault');
 const mergeRoutes = require('./routes/merge');
 const adminDemoRoutes = require('./routes/adminDemo');
 const webhooksRoutes = require('./routes/webhooks');
+const notificationsRoutes = require('./routes/notifications');
 
 function createApp() {
   const app = express();
@@ -42,6 +43,7 @@ function createApp() {
   app.use('/api/projects', projectsRoutes);
   app.use('/api/vault', vaultRoutes);
   app.use('/api/merge', mergeRoutes);
+  app.use('/api/notifications', notificationsRoutes);
   app.use('/api/admin/demo', adminDemoRoutes);
 
   // Hackathon demo UI (static) — after API so /api/* stays JSON

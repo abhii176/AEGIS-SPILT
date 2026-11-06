@@ -19,6 +19,9 @@ const state = {
   approvalUrl: '',
   lastAudit: null,
   lastMilestone: null,
+  notifications: [],
+  unreadCount: 0,
+  seenNotifIds: new Set(JSON.parse(localStorage.getItem('aegis.seenNotifs') || '[]')),
 };
 
 function $(sel, root = document) {
@@ -100,6 +103,99 @@ function updateSessionChip() {
   $('#session-name').textContent = `${state.user.name || state.user.email} · ${state.user.role}`;
 }
 
+function persistSeenNotifs() {
+  const ids = [...state.seenNotifIds].slice(-80);
+  localStorage.setItem('aegis.seenNotifs', JSON.stringify(ids));
+}
+
+function showToast(notification) {
+  const stack = $('#toast-stack');
+  if (!stack) return;
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.innerHTML = `<strong>${escapeHtml(notification.type)}</strong>${escapeHtml(notification.message)}`;
+  stack.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.35s ease';
+    setTimeout(() => el.remove(), 380);
+  }, 4200);
+}
+
+function renderNotifications() {
+  const badge = $('#notif-badge');
+  const list = $('#notif-list');
+  if (!badge || !list) return;
+
+  const unread = state.unreadCount || 0;
+  if (unread > 0) {
+    badge.hidden = false;
+    badge.textContent = unread > 9 ? '9+' : String(unread);
+  } else {
+    badge.hidden = true;
+  }
+
+  if (!state.notifications.length) {
+    list.innerHTML = '<li class="notif-empty">No alerts yet — fund, audit, or pay to see them</li>';
+    return;
+  }
+
+  list.innerHTML = state.notifications
+    .map((n) => {
+      const unreadClass = n.readAt ? '' : ' unread';
+      const when = n.createdAt ? new Date(n.createdAt).toLocaleString() : '';
+      return `<li class="${unreadClass.trim()}">
+        <button type="button" data-notif-id="${escapeHtml(n.id)}">
+          <span class="notif-type ${escapeHtml(n.type)}">${escapeHtml(n.type)}</span>
+          <div>${escapeHtml(n.message)}</div>
+          <div class="notif-meta">${escapeHtml(when)}</div>
+        </button>
+      </li>`;
+    })
+    .join('');
+}
+
+async function refreshNotifications({ toastNew = false } = {}) {
+  if (!state.userId) {
+    state.notifications = [];
+    state.unreadCount = 0;
+    renderNotifications();
+    return null;
+  }
+  try {
+    const data = await api('/api/notifications');
+    const next = data.notifications || [];
+    if (toastNew) {
+      for (const n of next) {
+        if (!n.readAt && !state.seenNotifIds.has(n.id)) {
+          showToast(n);
+          state.seenNotifIds.add(n.id);
+        }
+      }
+      persistSeenNotifs();
+    } else {
+      for (const n of next) state.seenNotifIds.add(n.id);
+      persistSeenNotifs();
+    }
+    state.notifications = next;
+    state.unreadCount = data.unreadCount ?? next.filter((n) => !n.readAt).length;
+    renderNotifications();
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function toggleNotifPanel(force) {
+  const panel = $('#notif-panel');
+  const btn = $('#btn-notif');
+  if (!panel || !btn) return;
+  const open = force != null ? force : panel.hidden;
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) refreshNotifications();
+}
+
 function setPersonasEnabled(enabled) {
   $all('.persona').forEach((btn) => {
     btn.disabled = !enabled;
@@ -116,6 +212,7 @@ function selectPersona(key) {
   $('#btn-users-next').disabled = false;
   updateSessionChip();
   refreshVerifyUi();
+  refreshNotifications();
 }
 
 async function refreshMe() {
@@ -312,6 +409,7 @@ async function fundVault() {
         : 'Open approval URL; PayPal returns to /api/vault/paypal/return which captures when APPROVED.',
     },
   });
+  if (funded) await refreshNotifications({ toastNew: true });
 }
 
 async function linkGithub(form) {
@@ -353,6 +451,7 @@ async function simulateMerge() {
   renderAudit(data);
   $('#btn-audit-next').disabled = false;
   showLog('#log-audit', data);
+  await refreshNotifications({ toastNew: true });
 }
 
 function renderAudit(data) {
@@ -399,6 +498,7 @@ async function refreshPaid() {
     state.lastMilestone = milestone || null;
     renderPaid(milestone);
     showLog('#log-paid', { project, milestone });
+    await refreshNotifications({ toastNew: true });
   } catch (err) {
     showLog('#log-paid', err.data || err.message);
   }
@@ -511,6 +611,43 @@ function bindUi() {
   });
 
   $('#btn-refresh-paid').addEventListener('click', () => refreshPaid());
+
+  $('#btn-notif')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleNotifPanel();
+  });
+
+  $('#btn-notif-mark-all')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!state.userId) return;
+    try {
+      await api('/api/notifications/mark-read', { method: 'POST', body: { all: true } });
+      await refreshNotifications();
+    } catch (err) {
+      showToast({ type: 'ERROR', message: err.message || 'Could not mark read' });
+    }
+  });
+
+  $('#notif-list')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-notif-id]');
+    if (!btn) return;
+    const id = btn.dataset.notifId;
+    try {
+      await api('/api/notifications/mark-read', {
+        method: 'POST',
+        body: { notificationIds: [id] },
+      });
+      await refreshNotifications();
+    } catch {
+      /* ignore */
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    const wrap = $('#notif-wrap');
+    if (!wrap || wrap.contains(e.target)) return;
+    toggleNotifPanel(false);
+  });
 }
 
 async function boot() {
@@ -547,6 +684,8 @@ async function boot() {
     $('#btn-fund-next').disabled = false;
     $('#btn-github-next').disabled = false;
   }
+
+  await refreshNotifications();
 }
 
 boot();

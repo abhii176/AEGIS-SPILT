@@ -1,6 +1,7 @@
 const { prisma } = require('../../lib/prisma');
 const { env } = require('../../config/env');
 const { createPaypalService } = require('./index');
+const { createNotificationService } = require('../notifications');
 
 const RELEASABLE_STATUSES = new Set(['FUNDED', 'IN_PROGRESS', 'SUBMITTED', 'AUDITING', 'PASSED']);
 
@@ -11,6 +12,7 @@ const RELEASABLE_STATUSES = new Set(['FUNDED', 'IN_PROGRESS', 'SUBMITTED', 'AUDI
 function createEscrowService({
   paypal = createPaypalService(),
   db = prisma,
+  notifications = createNotificationService({ db }),
 } = {}) {
   async function resolveFundAmount({ project, milestoneId, amountCents }) {
     if (milestoneId) {
@@ -98,6 +100,29 @@ function createEscrowService({
     });
   }
 
+  async function emitFundedNotifications({ projectId, milestoneId = null, amountCents = null }) {
+    if (!projectId || typeof notifications.notifyFunded !== 'function') return;
+    try {
+      const project = await db.project.findUnique({ where: { id: projectId } });
+      if (!project) return;
+      let milestone = null;
+      if (milestoneId) {
+        milestone = await db.milestone.findUnique({ where: { id: milestoneId } });
+      }
+      await notifications.notifyFunded({
+        project,
+        milestone,
+        amountCents: amountCents ?? milestone?.amountCents ?? null,
+      });
+    } catch (err) {
+      // Notifications must not break capture/payout happy path
+      if (process.env.NODE_ENV !== 'test') {
+        // eslint-disable-next-line no-console
+        console.warn('[notifications] funded emit failed:', err.message || err);
+      }
+    }
+  }
+
   async function markFundCaptured({ fund, orderId, captureId }) {
     const updatedFund = await db.vaultFund.update({
       where: { id: fund.id },
@@ -129,6 +154,11 @@ function createEscrowService({
         });
       }
       await refreshProjectFundedStatus(fund.projectId);
+      await emitFundedNotifications({
+        projectId: fund.projectId,
+        milestoneId: fund.milestoneId || null,
+        amountCents: fund.amountCents,
+      });
     }
 
     return updatedFund;
@@ -225,10 +255,27 @@ function createEscrowService({
           where: { id: resolved.milestone.id },
           data: { status: 'FUNDED' },
         });
+        await emitFundedNotifications({
+          projectId: project.id,
+          milestoneId: resolved.milestone.id,
+          amountCents: resolved.amountCents,
+        });
       } else if (resolved.scope === 'project' && resolved.milestones?.length) {
         await db.milestone.updateMany({
           where: { id: { in: resolved.milestones.map((m) => m.id) } },
           data: { status: 'FUNDED' },
+        });
+        // One project-level funded notice (dedupe by project id)
+        await emitFundedNotifications({
+          projectId: project.id,
+          milestoneId: null,
+          amountCents: resolved.amountCents,
+        });
+      } else {
+        await emitFundedNotifications({
+          projectId: project.id,
+          milestoneId: null,
+          amountCents: resolved.amountCents,
         });
       }
       await refreshProjectFundedStatus(project.id);
@@ -464,6 +511,21 @@ function createEscrowService({
       where: { id: milestone.id },
       data: { status: 'PAID' },
     });
+
+    if (typeof notifications.notifyPaid === 'function') {
+      try {
+        await notifications.notifyPaid({
+          project: milestone.project,
+          milestone: paid,
+          amountCents: paid.amountCents,
+        });
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'test') {
+          // eslint-disable-next-line no-console
+          console.warn('[notifications] paid emit failed:', err.message || err);
+        }
+      }
+    }
 
     return {
       milestone: paid,

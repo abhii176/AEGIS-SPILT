@@ -89,6 +89,7 @@ function makeMockDb(seed = {}) {
       ...seed.project,
     },
     mergeEvents: [],
+    notifications: [],
   };
 
   return {
@@ -119,6 +120,27 @@ function makeMockDb(seed = {}) {
         state.mergeEvents.push(row);
         return row;
       },
+    },
+    notification: {
+      findFirst: async ({ where }) =>
+        state.notifications.find(
+          (n) =>
+            (!where.userId || n.userId === where.userId) &&
+            (where.dedupeKey == null || n.dedupeKey === where.dedupeKey)
+        ) || null,
+      create: async ({ data }) => {
+        const row = {
+          id: `n-${state.notifications.length + 1}`,
+          readAt: null,
+          createdAt: new Date(),
+          ...data,
+        };
+        state.notifications.push(row);
+        return { ...row };
+      },
+      findMany: async () => [...state.notifications],
+      count: async () => state.notifications.length,
+      updateMany: async () => ({ count: 0 }),
     },
   };
 }
@@ -163,6 +185,7 @@ async function testMergeHandlerPassAndRelease() {
   assert.strictEqual(releases[0].milestoneId, 'ms-demo');
   assert.strictEqual(db._state.mergeEvents.length, 1);
   assert.strictEqual(db._state.mergeEvents[0].source, 'webhook');
+  assert.ok(db._state.notifications.some((n) => n.type === 'AUDIT_PASSED'));
 }
 
 async function testMergeHandlerFailMarksFailed() {
@@ -186,6 +209,7 @@ async function testMergeHandlerFailMarksFailed() {
   assert.strictEqual(result.milestone.status, 'FAILED');
   assert.strictEqual(result.payout, null);
   assert.strictEqual(db._state.milestone.auditPassed, false);
+  assert.ok(db._state.notifications.some((n) => n.type === 'AUDIT_FAILED'));
 }
 
 async function testMergeHandlerBlocksWithoutKyc() {

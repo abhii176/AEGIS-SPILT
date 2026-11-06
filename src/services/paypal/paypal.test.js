@@ -176,6 +176,7 @@ function makeEscrowDbMock() {
   const funds = new Map();
   const projects = new Map();
   const milestones = new Map();
+  const notifications = [];
 
   const project = {
     id: 'proj-1',
@@ -290,9 +291,26 @@ function makeEscrowDbMock() {
         return { ...f };
       },
     },
+    notification: {
+      findFirst: async ({ where }) =>
+        notifications.find(
+          (n) =>
+            (!where.userId || n.userId === where.userId) &&
+            (where.dedupeKey == null || n.dedupeKey === where.dedupeKey)
+        ) || null,
+      create: async ({ data }) => {
+        const row = { id: `n-${notifications.length + 1}`, readAt: null, createdAt: new Date(), ...data };
+        notifications.push(row);
+        return { ...row };
+      },
+      findMany: async () => [...notifications],
+      count: async () => notifications.length,
+      updateMany: async () => ({ count: 0 }),
+    },
     _funds: funds,
     _milestones: milestones,
     _projects: projects,
+    _notifications: notifications,
   };
 }
 
@@ -347,6 +365,8 @@ async function testEscrowCreateApproveLinkNoAutoCapture() {
   assert.strictEqual(completed.vaultFund.paypalCaptureId, 'CAP-ESCROW-1');
   assert.strictEqual(capturedCalls, 1);
   assert.strictEqual(db._milestones.get('ms-1').status, 'FUNDED');
+  assert.ok(db._notifications.some((n) => n.type === 'FUNDED'));
+  assert.strictEqual(db._notifications.filter((n) => n.type === 'FUNDED').length, 2);
 
   const cancelledDb = makeEscrowDbMock();
   const cancelPaypal = {
