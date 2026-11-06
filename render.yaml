@@ -1,0 +1,60 @@
+# Render Blueprint — one-click deploy for hackathon judges
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Free path: Neon Postgres (external) + Render Web Service.
+# 1) Create a Neon free project → copy connection string
+# 2) Blueprint deploy this file (or use the Deploy to Render button in README)
+# 3) Paste DATABASE_URL when prompted; after first deploy set APP_BASE_URL
+#    to the public https://*.onrender.com URL (or rely on RENDER_EXTERNAL_URL fallback)
+#
+# PayPal: default PAYPAL_MOCK=true for a reliable judge demo.
+# To use live sandbox Orders/Payouts, set PAYPAL_MOCK=false and fill sandbox
+# PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET in the Render dashboard.
+
+services:
+  - type: web
+    name: aegis-split
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      # Paste Neon (or other) Postgres URL in the Render dashboard / Blueprint confirm UI
+      - key: DATABASE_URL
+        sync: false
+      # Optional override; if empty, app uses https://$RENDER_EXTERNAL_HOSTNAME
+      - key: APP_BASE_URL
+        sync: false
+      - key: PAYPAL_RETURN_URL
+        sync: false
+      - key: PAYPAL_CANCEL_URL
+        sync: false
+      - key: PAYPAL_MOCK
+        value: "true"
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_AUTO_CAPTURE
+        value: "true"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: DEMO_ADMIN_KEY
+        value: hackathon-demo-key
+      - key: MONITORING_CONSENT_VERSION
+        value: "1.0.0"
+      - key: DEFAULT_MILESTONE_CURRENCY
+        value: USD
+      - key: AI_AUDITOR_PROVIDER
+        value: deterministic
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
