@@ -22,7 +22,7 @@ See **[DEPLOY.md](./DEPLOY.md)** for one-click paths:
 - **Railway** (`railway.toml` + Dockerfile)
 - **Fly.io** (`fly.toml`) when `FLY_API_TOKEN` is available
 
-Docker image runs `prisma migrate deploy` on boot. Blueprint defaults: `PAYPAL_MOCK=true`, `DEMO_ADMIN_KEY=hackathon-demo-key`.
+Docker image runs `prisma migrate deploy` on boot. Set `PAYPAL_MOCK` / credentials in the host dashboard (`render.yaml` keeps them `sync: false` so Blueprint sync cannot force mock). `DEMO_ADMIN_KEY` defaults to `hackathon-demo-key`.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://dashboard.render.com/blueprints/new?repo=https://github.com/abhii176/AEGIS-SPILT)
 

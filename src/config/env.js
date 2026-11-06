@@ -71,10 +71,16 @@ const env = {
     clientSecret: optional('PAYPAL_CLIENT_SECRET'),
     /// sandbox | live — base URL for REST calls
     mode: optional('PAYPAL_MODE', 'sandbox'),
-    /// When true (or credentials empty), Orders/Payouts return mock IDs for local demo/tests
-    mock:
-      String(optional('PAYPAL_MOCK', '')).toLowerCase() === 'true' ||
-      optional('PAYPAL_MOCK') === '1',
+    /// true | false | null (unset). null → client may mock when credentials look like placeholders.
+    /// Explicit false never silent-mocks (Render live sandbox path).
+    mock: (() => {
+      const raw = optional('PAYPAL_MOCK', '');
+      if (raw === '') return null;
+      const v = String(raw).toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+      return null;
+    })(),
     /// Default false: create order → buyer approves → capture on return (avoids ORDER_NOT_APPROVED).
     /// Set PAYPAL_AUTO_CAPTURE=true only for mock/local demos that skip the approve redirect.
     autoCapture:
