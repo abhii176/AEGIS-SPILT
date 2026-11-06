@@ -35,7 +35,27 @@ function createApp() {
   app.use(express.urlencoded({ extended: true }));
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, service: 'aegis-split' });
+    // Surface PayPal mock/mode (no secrets) so hosts can confirm live sandbox vs MOCK-ORDER.
+    const { env } = require('./config/env');
+    const { createPaypalClient } = require('./services/paypal/client');
+    const paypalClient = createPaypalClient();
+    const cid = String(env.paypal.clientId || '').trim();
+    const csec = String(env.paypal.clientSecret || '').trim();
+    const looksPlaceholder = (v) =>
+      !v || v.toLowerCase().startsWith('your_') || v.toLowerCase().includes('placeholder');
+    res.json({
+      ok: true,
+      service: 'aegis-split',
+      paypal: {
+        mock: paypalClient.isMock(),
+        mockFlag: env.paypal.mock,
+        mode: env.paypal.mode,
+        autoCapture: env.paypal.autoCapture,
+        clientIdConfigured: Boolean(cid) && !looksPlaceholder(cid),
+        clientSecretConfigured: Boolean(csec) && !looksPlaceholder(csec),
+        appBaseUrl: env.appBaseUrl,
+      },
+    });
   });
 
   app.use('/api/auth', authRoutes);

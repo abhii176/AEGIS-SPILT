@@ -19,6 +19,40 @@ function testPickCaptureId() {
   assert.strictEqual(id, 'CAP-123');
 }
 
+async function testExplicitMockFalseNeverSilentMocks() {
+  // PAYPAL_MOCK=false must not return MOCK-ORDER just because secrets are missing
+  const off = createPaypalClient({ mock: false, clientId: '', clientSecret: '' });
+  assert.strictEqual(off.isMock(), false);
+
+  const offPlaceholders = createPaypalClient({
+    mock: false,
+    clientId: 'your_paypal_sandbox_client_id',
+    clientSecret: 'your_paypal_sandbox_client_secret',
+  });
+  assert.strictEqual(offPlaceholders.isMock(), false);
+
+  // Unset mock + empty/placeholder creds → still mock (local boot without secrets)
+  const unset = createPaypalClient({ mock: null, clientId: '', clientSecret: '' });
+  assert.strictEqual(unset.isMock(), true);
+
+  const on = createPaypalClient({ mock: true, clientId: 'real-id', clientSecret: 'real-secret' });
+  assert.strictEqual(on.isMock(), true);
+
+  // createOrder with mock:false + empty secrets must fail loudly (not MOCK-ORDER)
+  const orders = createOrdersService(off);
+  await assert.rejects(
+    () =>
+      orders.createOrder({
+        amountCents: 1000,
+        currency: 'USD',
+        referenceId: 'should-not-mock',
+        returnUrl: 'http://localhost/return',
+        cancelUrl: 'http://localhost/cancel',
+      }),
+    (err) => err && err.code === 'paypal_config_missing'
+  );
+}
+
 async function testMockOrdersAndPayouts() {
   const paypal = createPaypalService({ mock: true, clientId: '', clientSecret: '' });
   assert.strictEqual(paypal.isMock(), true);
@@ -482,6 +516,7 @@ async function run() {
   testCentsToAmount();
   testPickCaptureId();
   testReleasableStatuses();
+  await testExplicitMockFalseNeverSilentMocks();
   await testMockOrdersAndPayouts();
   await testHttpOrdersWithFetchMock();
   await testHttpCreateWithApproveLinkAndReturnUrls();

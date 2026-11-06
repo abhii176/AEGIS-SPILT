@@ -7,9 +7,11 @@
 # 3) Paste DATABASE_URL when prompted; after first deploy set APP_BASE_URL
 #    to the public https://*.onrender.com URL (or rely on RENDER_EXTERNAL_URL fallback)
 #
-# PayPal: default PAYPAL_MOCK=true for a reliable judge demo.
-# To use live sandbox Orders/Payouts, set PAYPAL_MOCK=false and fill sandbox
-# PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET in the Render dashboard.
+# PayPal: PAYPAL_MOCK / PAYPAL_AUTO_CAPTURE / credentials use sync:false so the
+# Render dashboard is source of truth. Blueprint must NOT hardcode PAYPAL_MOCK=true
+# (that overwrote dashboard PAYPAL_MOCK=false on every sync and forced MOCK-ORDER).
+# Judges without sandbox creds: set PAYPAL_MOCK=true (and optionally AUTO_CAPTURE=true).
+# Live sandbox: PAYPAL_MOCK=false, PAYPAL_AUTO_CAPTURE=false, fill CLIENT_ID/SECRET.
 
 services:
   - type: web
@@ -36,12 +38,13 @@ services:
         sync: false
       - key: PAYPAL_CANCEL_URL
         sync: false
+      # Dashboard-owned — do not Blueprint-force true (was overwriting live sandbox)
       - key: PAYPAL_MOCK
-        value: "true"
+        sync: false
       - key: PAYPAL_MODE
         value: sandbox
       - key: PAYPAL_AUTO_CAPTURE
-        value: "true"
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET

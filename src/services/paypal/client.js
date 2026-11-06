@@ -27,11 +27,25 @@ function createPaypalClient({
     return !v || v.startsWith('your_') || v.includes('placeholder');
   }
 
+  function isExplicitMockOff() {
+    return mock === false || String(mock).toLowerCase() === 'false' || mock === '0';
+  }
+
+  function isExplicitMockOn() {
+    return mock === true || String(mock).toLowerCase() === 'true' || mock === '1';
+  }
+
   function isMock() {
-    if (mock === true || String(mock).toLowerCase() === 'true' || mock === '1') {
+    // Explicit PAYPAL_MOCK=true → always mock
+    if (isExplicitMockOn()) {
       return true;
     }
-    // Empty or .env.example placeholders → mock so local/hackathon boot without secrets
+    // Explicit PAYPAL_MOCK=false → never silent-mock (even if secrets missing/placeholder).
+    // Missing creds fail at OAuth instead of returning MOCK-ORDER / CAPTURED.
+    if (isExplicitMockOff()) {
+      return false;
+    }
+    // Unset mock → empty/.env.example placeholders mock so local boot without secrets
     return looksLikePlaceholder(clientId) || looksLikePlaceholder(clientSecret);
   }
 

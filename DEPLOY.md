@@ -30,7 +30,9 @@ No host API tokens are committed. Secrets stay in the host dashboard / CLI secre
 2. Open: [https://dashboard.render.com/blueprints/new](https://dashboard.render.com/blueprints/new)
 3. Connect the GitHub repo → select `render.yaml`.
 4. When prompted for `DATABASE_URL`, paste the Neon URL.
-5. Leave `PAYPAL_MOCK=true` (Blueprint default) for a reliable judge demo.
+5. In the Blueprint confirm / Environment UI, set PayPal flags (they are **dashboard-owned** via `sync: false` — Blueprint will not overwrite them on later syncs):
+   - Judge demo without PayPal: `PAYPAL_MOCK=true`, optionally `PAYPAL_AUTO_CAPTURE=true`
+   - Live sandbox: `PAYPAL_MOCK=false`, `PAYPAL_AUTO_CAPTURE=false`, plus sandbox `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`
 6. Create Blueprint → wait for the first deploy (Docker build + migrate).
 7. Copy the service URL (`https://aegis-split-xxxx.onrender.com`).
 8. In **Environment**, set (then **Manual Deploy**):
@@ -38,6 +40,7 @@ No host API tokens are committed. Secrets stay in the host dashboard / CLI secre
    - `PAYPAL_RETURN_URL` = `{APP_BASE_URL}/api/vault/paypal/return`
    - `PAYPAL_CANCEL_URL` = `{APP_BASE_URL}/api/vault/paypal/cancel`  
    *(If you skip these, the app falls back to `https://$RENDER_EXTERNAL_HOSTNAME`.)*
+9. Confirm live mode with `GET /health` → `paypal.mock` should be `false` when `PAYPAL_MOCK=false` and credentials are set.
 
 **Option 2 — New Web Service UI**
 
@@ -53,14 +56,14 @@ No host API tokens are committed. Secrets stay in the host dashboard / CLI secre
 | `APP_BASE_URL` | `https://YOUR-HOST` | Required for correct PayPal return links |
 | `PAYPAL_RETURN_URL` | `{APP_BASE_URL}/api/vault/paypal/return` | Or omit (derived) |
 | `PAYPAL_CANCEL_URL` | `{APP_BASE_URL}/api/vault/paypal/cancel` | Or omit (derived) |
-| `PAYPAL_MOCK` | `true` | **Default for judges** — no live PayPal needed |
-| `PAYPAL_AUTO_CAPTURE` | `true` | Skip browser approve when mocking |
+| `PAYPAL_MOCK` | `true` (judges) / `false` (live sandbox) | Dashboard-owned (`sync: false`). Do **not** Blueprint-hardcode `true` — that overwrote live sandbox. |
+| `PAYPAL_AUTO_CAPTURE` | `true` only with mock | Dashboard-owned. Leave `false` for live sandbox approve → return. |
 | `PAYPAL_MODE` | `sandbox` | |
-| `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | *(omit when mock)* | Set only if `PAYPAL_MOCK=false` |
+| `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | *(omit when mock)* | Required when `PAYPAL_MOCK=false` |
 | `DEMO_ADMIN_KEY` | `hackathon-demo-key` | Header `X-Demo-Admin-Key` |
 | `AI_AUDITOR_PROVIDER` | `deterministic` | Demo-safe without LLM keys |
 
-**PayPal mode used for the Blueprint defaults:** `PAYPAL_MOCK=true` (mock Orders/Payouts). Live sandbox credentials may exist in Cursor Cloud Agent secrets (`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE=sandbox`, `PAYPAL_MOCK=false`) — paste those into the host dashboard only if you want a real sandbox approve flow; keep mock for reliability.
+**PayPal on Render:** `PAYPAL_MOCK` / `PAYPAL_AUTO_CAPTURE` / client credentials are set in the dashboard (`sync: false`). Explicit `PAYPAL_MOCK=false` never silent-falls back to `MOCK-ORDER` when secrets are missing — OAuth fails loudly instead. Check `GET /health` → `paypal.mock`.
 
 Migrations run automatically on container start (`npx prisma migrate deploy`).
 
