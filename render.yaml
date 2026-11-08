@@ -49,6 +49,9 @@ services:
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
+      # Dashboard-owned — required only for POST /api/webhooks/paypal verification
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
       - key: DEMO_ADMIN_KEY
         value: hackathon-demo-key
       - key: MONITORING_CONSENT_VERSION

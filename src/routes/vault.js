@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
+const { vaultLimiter } = require('../middleware/rateLimit');
 const {
   fundVault,
   captureVault,
@@ -11,10 +12,10 @@ const {
 const router = express.Router();
 
 /** Funding a vault requires gov_id_verified AND monitoring_consent_granted */
-router.post('/fund', requireAuth, requireKycAndConsent, fundVault);
+router.post('/fund', vaultLimiter, requireAuth, requireKycAndConsent, fundVault);
 
 /** Capture a pending PayPal order after buyer approval (authenticated) */
-router.post('/capture', requireAuth, requireKycAndConsent, captureVault);
+router.post('/capture', vaultLimiter, requireAuth, requireKycAndConsent, captureVault);
 
 /**
  * PayPal browser redirects — no auth (PayPal cannot send X-User-Id).

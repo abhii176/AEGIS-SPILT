@@ -93,6 +93,8 @@ const env = {
     buyerEmail: optional('PAYPAL_BUYER_EMAIL'),
     /// Optional default payout recipient when freelancer.paypalEmail unset
     payoutEmail: optional('PAYPAL_PAYOUT_EMAIL'),
+    /// Webhook id from PayPal Developer Dashboard (REST verify-webhook-signature)
+    webhookId: optional('PAYPAL_WEBHOOK_ID'),
   },
 
   /// Shared secret for POST /api/admin/demo/... hackathon triggers (header X-Demo-Admin-Key)

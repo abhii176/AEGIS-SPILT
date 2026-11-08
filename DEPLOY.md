@@ -60,6 +60,7 @@ No host API tokens are committed. Secrets stay in the host dashboard / CLI secre
 | `PAYPAL_AUTO_CAPTURE` | `true` only with mock | Dashboard-owned. Leave `false` for live sandbox approve → return. |
 | `PAYPAL_MODE` | `sandbox` | |
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | *(omit when mock)* | Required when `PAYPAL_MOCK=false` |
+| `PAYPAL_WEBHOOK_ID` | *(optional)* | Dashboard `sync: false`. Needed only for `POST /api/webhooks/paypal` signature verify. Approve → return → capture works without it. |
 | `DEMO_ADMIN_KEY` | `hackathon-demo-key` | Header `X-Demo-Admin-Key` |
 | `AI_AUDITOR_PROVIDER` | `deterministic` | Demo-safe without LLM keys |
 

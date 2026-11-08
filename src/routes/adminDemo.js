@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
+const { adminDemoLimiter, payoutLimiter } = require('../middleware/rateLimit');
 const { releaseMilestone, requireDemoAdmin } = require('../controllers/payoutsController');
 const { simulateMerge } = require('../controllers/githubWebhookController');
 const {
@@ -10,6 +11,8 @@ const {
 } = require('../controllers/demoUsersController');
 
 const router = express.Router();
+
+router.use(adminDemoLimiter);
 
 /**
  * Seed / list Sarah + Rohan (no X-User-Id yet — demo key only).
@@ -23,6 +26,7 @@ router.get('/users', requireDemoAdminKey, listDemoUsers);
  */
 router.post(
   '/milestones/:milestoneId/release',
+  payoutLimiter,
   requireAuth,
   requireKycAndConsent,
   requireDemoAdmin,
