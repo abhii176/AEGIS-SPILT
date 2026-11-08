@@ -16,7 +16,8 @@ function createApp() {
   const app = express();
   const publicDir = path.join(__dirname, '..', 'public');
 
-  app.set('trust proxy', true);
+  // Render terminates TLS with one hop; avoid permissive trust proxy with rate-limit
+  app.set('trust proxy', 1);
   app.use(cors());
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 

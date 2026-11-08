@@ -34,8 +34,9 @@ async function fundVault(req, res, next) {
 
     // Default: no auto-capture. Opt-in only via body or PAYPAL_AUTO_CAPTURE=true.
     let autoCapture = env.paypal.autoCapture;
-    if (req.body?.capture != null) autoCapture = Boolean(req.body.capture);
-    else if (req.body?.autoCapture != null) autoCapture = Boolean(req.body.autoCapture);
+    const parseBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
+    if (req.body?.capture != null) autoCapture = parseBool(req.body.capture);
+    else if (req.body?.autoCapture != null) autoCapture = parseBool(req.body.autoCapture);
 
     const result = await escrow.fundProjectVault({
       userId: req.user.id,
