@@ -1,18 +1,20 @@
 const { prisma } = require('../lib/prisma');
+const { validateMergeBody } = require('../lib/requestValidation');
 
 /** POST /api/merge — gated by requireKycAndConsent */
 async function mergeCode(req, res, next) {
   try {
-    const projectId = req.body?.projectId || req.body?.project_id || null;
-    const prNumber = req.body?.prNumber ?? req.body?.pr_number ?? null;
-    const repoFullName = req.body?.repoFullName || req.body?.repo_full_name || null;
+    const validation = validateMergeBody(req.body || {});
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.errors[0] });
+    }
 
     const event = await prisma.mergeEvent.create({
       data: {
         userId: req.user.id,
-        projectId: projectId ? String(projectId) : null,
-        prNumber: prNumber != null ? Number(prNumber) : null,
-        repoFullName: repoFullName ? String(repoFullName) : null,
+        projectId: validation.projectId ? String(validation.projectId) : null,
+        prNumber: validation.prNumber != null ? Number(validation.prNumber) : null,
+        repoFullName: validation.repoFullName ? String(validation.repoFullName) : null,
       },
     });
 

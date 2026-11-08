@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
+const { payoutLimiter } = require('../middleware/rateLimit');
 const {
   createProject,
   listProjects,
@@ -50,6 +51,7 @@ router.post(
  */
 router.post(
   '/:projectId/milestones/:milestoneId/release',
+  payoutLimiter,
   requireAuth,
   requireKycAndConsent,
   releaseMilestone

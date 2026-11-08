@@ -1,5 +1,6 @@
 const { prisma } = require('../lib/prisma');
 const { resolveKycProvider, digilocker, stripeIdentity } = require('../services/kyc');
+const { validateVerifyIdentityBody } = require('../lib/requestValidation');
 
 /**
  * POST /api/auth/verify-identity
@@ -9,8 +10,16 @@ const { resolveKycProvider, digilocker, stripeIdentity } = require('../services/
 async function startVerifyIdentity(req, res, next) {
   try {
     const user = req.user;
-    const countryCode = req.body?.countryCode || req.body?.country || user.countryCode;
-    const locale = req.body?.locale || user.locale;
+    const validation = validateVerifyIdentityBody(req.body || {});
+    if (!validation.ok) {
+      return res.status(400).json({
+        error: validation.errors[0],
+        message: 'Invalid verify-identity payload.',
+      });
+    }
+
+    const countryCode = validation.countryCode || user.countryCode;
+    const locale = validation.locale || user.locale;
 
     if (!countryCode) {
       return res.status(400).json({

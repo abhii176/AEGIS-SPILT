@@ -1,5 +1,6 @@
 const { prisma } = require('../lib/prisma');
 const { loadProjectOrFail } = require('./milestonesController');
+const { validateGithubLinkBody } = require('../lib/requestValidation');
 
 /**
  * POST /api/projects/:projectId/milestones/:milestoneId/github
@@ -17,49 +18,21 @@ async function linkGithubToMilestone(req, res, next) {
       return res.status(404).json({ error: 'milestone_not_found' });
     }
 
-    const {
-      githubRepoFullName,
-      github_repo_full_name: repoSnake,
-      repoFullName,
-      repo_full_name: repoSnake2,
-      githubPrNumber,
-      github_pr_number: prSnake,
-      prNumber,
-      pr_number: prSnake2,
-      githubPrUrl,
-      github_pr_url: urlSnake,
-      prUrl: prUrlCamel,
-      pr_url: urlSnake2,
-    } = req.body || {};
-
-    const repo = String(
-      githubRepoFullName || repoSnake || repoFullName || repoSnake2 || ''
-    ).trim();
-
-    if (!repo) {
+    const validation = validateGithubLinkBody(req.body || {});
+    if (!validation.ok) {
       return res.status(400).json({
-        error: 'github_repo_required',
-        message: 'Provide githubRepoFullName (owner/name).',
+        error: validation.errors[0],
+        message:
+          validation.errors[0] === 'github_repo_required'
+            ? 'Provide githubRepoFullName (owner/name).'
+            : validation.errors[0] === 'invalid_github_repo'
+              ? 'githubRepoFullName must look like owner/repo.'
+              : undefined,
       });
     }
 
-    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
-      return res.status(400).json({
-        error: 'invalid_github_repo',
-        message: 'githubRepoFullName must look like owner/repo.',
-      });
-    }
-
-    const rawPr = githubPrNumber ?? prSnake ?? prNumber ?? prSnake2;
-    let prNum = null;
-    if (rawPr != null && rawPr !== '') {
-      prNum = Number(rawPr);
-      if (!Number.isInteger(prNum) || prNum < 1) {
-        return res.status(400).json({ error: 'invalid_github_pr_number' });
-      }
-    }
-
-    let resolvedPrUrl = githubPrUrl || urlSnake || prUrlCamel || urlSnake2 || null;
+    const { repo, prNum } = validation;
+    let resolvedPrUrl = validation.prUrl;
     if (!resolvedPrUrl && prNum != null) {
       resolvedPrUrl = `https://github.com/${repo}/pull/${prNum}`;
     }

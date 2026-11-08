@@ -1,5 +1,9 @@
 const { env } = require('../config/env');
 const { createEscrowService } = require('../services/paypal/escrow');
+const {
+  validateFundVaultBody,
+  validateCaptureVaultBody,
+} = require('../lib/requestValidation');
 
 const escrow = createEscrowService();
 
@@ -15,23 +19,24 @@ function wantsJson(req) {
 /** POST /api/vault/fund — gated by requireKycAndConsent */
 async function fundVault(req, res, next) {
   try {
-    const projectId = req.body?.projectId || req.body?.project_id;
-    if (!projectId) {
+    const validation = validateFundVaultBody(req.body || {});
+    if (!validation.ok) {
       return res.status(400).json({
-        error: 'project_id_required',
-        message: 'projectId is required to lock escrow funds.',
+        error: validation.errors[0],
+        message:
+          validation.errors[0] === 'project_id_required'
+            ? 'projectId is required to lock escrow funds.'
+            : `Invalid fund request (${validation.errors[0]}).`,
       });
     }
 
-    const milestoneId = req.body?.milestoneId || req.body?.milestone_id || null;
-    const amountCentsRaw = req.body?.amountCents ?? req.body?.amount_cents;
-    const amountCents = amountCentsRaw != null ? Number(amountCentsRaw) : null;
-    const currency = req.body?.currency ? String(req.body.currency).toUpperCase() : undefined;
+    const { projectId, milestoneId, amountCents, currency } = validation;
 
     // Default: no auto-capture. Opt-in only via body or PAYPAL_AUTO_CAPTURE=true.
     let autoCapture = env.paypal.autoCapture;
-    if (req.body?.capture != null) autoCapture = Boolean(req.body.capture);
-    else if (req.body?.autoCapture != null) autoCapture = Boolean(req.body.autoCapture);
+    const parseBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
+    if (req.body?.capture != null) autoCapture = parseBool(req.body.capture);
+    else if (req.body?.autoCapture != null) autoCapture = parseBool(req.body.autoCapture);
 
     const result = await escrow.fundProjectVault({
       userId: req.user.id,
@@ -59,20 +64,21 @@ async function fundVault(req, res, next) {
 /** POST /api/vault/capture — gated by requireKycAndConsent */
 async function captureVault(req, res, next) {
   try {
-    const vaultFundId = req.body?.vaultFundId || req.body?.vault_fund_id || null;
-    const orderId = req.body?.orderId || req.body?.order_id || req.body?.token || null;
-
-    if (!vaultFundId && !orderId) {
+    const validation = validateCaptureVaultBody(req.body || {});
+    if (!validation.ok) {
       return res.status(400).json({
-        error: 'order_or_fund_required',
-        message: 'Provide vaultFundId or orderId (PayPal token).',
+        error: validation.errors[0],
+        message:
+          validation.errors[0] === 'order_or_fund_required'
+            ? 'Provide vaultFundId or orderId (PayPal token).'
+            : `Invalid capture request (${validation.errors[0]}).`,
       });
     }
 
     const result = await escrow.captureVaultOrder({
       userId: req.user.id,
-      vaultFundId,
-      orderId,
+      vaultFundId: validation.vaultFundId,
+      orderId: validation.orderId,
       requireApproved: true,
     });
 

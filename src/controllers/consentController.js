@@ -1,5 +1,6 @@
 const { prisma } = require('../lib/prisma');
 const { env } = require('../config/env');
+const { validateConsentBody } = require('../lib/requestValidation');
 
 function clientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -18,16 +19,18 @@ function clientIp(req) {
 async function recordMonitoringConsent(req, res, next) {
   try {
     const user = req.user;
-    const version = String(req.body?.consentVersion || env.monitoringConsentVersion);
-    const accepted = req.body?.accepted === true || req.body?.accepted === 'true';
-
-    if (!accepted) {
+    const validation = validateConsentBody(req.body || {});
+    if (!validation.ok) {
       return res.status(400).json({
-        error: 'acceptance_required',
+        error: validation.errors[0],
         message:
-          'You must explicitly accept monitoring of on-platform chats and call recordings for dispute resolution and counseling (accepted: true).',
+          validation.errors[0] === 'acceptance_required'
+            ? 'You must explicitly accept monitoring of on-platform chats and call recordings for dispute resolution and counseling (accepted: true).'
+            : 'Invalid consent payload.',
       });
     }
+
+    const version = String(validation.consentVersion || env.monitoringConsentVersion);
 
     const ipAddress = clientIp(req);
     const userAgent = req.get('user-agent') || null;

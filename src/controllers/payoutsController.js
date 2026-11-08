@@ -1,5 +1,6 @@
 const { createEscrowService } = require('../services/paypal/escrow');
 const { env } = require('../config/env');
+const { validateReleaseMilestoneBody } = require('../lib/requestValidation');
 
 const escrow = createEscrowService();
 
@@ -9,21 +10,14 @@ const escrow = createEscrowService();
  */
 async function releaseMilestone(req, res, next) {
   try {
-    const milestoneId = req.params.milestoneId || req.body?.milestoneId || req.body?.milestone_id;
-    if (!milestoneId) {
-      return res.status(400).json({ error: 'milestone_id_required' });
+    const validation = validateReleaseMilestoneBody(req.body || {}, req.params || {});
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.errors[0] });
     }
 
-    const recipientEmail =
-      req.body?.recipientEmail ||
-      req.body?.recipient_email ||
-      req.body?.paypalEmail ||
-      req.body?.paypal_email ||
-      null;
-
     const result = await escrow.releaseMilestone({
-      milestoneId: String(milestoneId),
-      recipientEmail,
+      milestoneId: String(validation.milestoneId),
+      recipientEmail: validation.recipientEmail,
       actorUserId: req.user?.id || null,
       allowDemoBypass: Boolean(req.demoAdmin),
     });
