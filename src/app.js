@@ -75,10 +75,15 @@ function createApp() {
       // eslint-disable-next-line no-console
       console.error(err);
     }
+    const isProduction = process.env.NODE_ENV === 'production';
+    const message =
+      isProduction && status >= 500
+        ? 'Unexpected error'
+        : err.message || 'Unexpected error';
     res.status(status).json({
       error: err.code || 'internal_error',
-      message: err.message || 'Unexpected error',
-      ...(err.details ? { details: err.details } : {}),
+      message,
+      ...(!isProduction && err.details ? { details: err.details } : {}),
     });
   });
 
