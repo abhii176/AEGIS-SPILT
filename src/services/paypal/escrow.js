@@ -343,6 +343,10 @@ function createEscrowService({
       err.code = 'vault_fund_cancelled';
       throw err;
     }
+    if (fund.projectId) {
+      const project = await db.project.findUnique({ where: { id: fund.projectId } });
+      if (project) assertProjectNotCancelled(project, 'capturing vault funds');
+    }
 
     const targetOrderId = orderId || fund.paypalOrderId;
     if (!targetOrderId) {
@@ -455,6 +459,8 @@ function createEscrowService({
       err.code = 'milestone_not_found';
       throw err;
     }
+
+    assertProjectNotCancelled(milestone.project, 'releasing milestone payout');
 
     if (['RELEASED', 'PAID'].includes(milestone.status)) {
       const err = new Error('Milestone already released/paid');

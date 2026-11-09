@@ -251,6 +251,14 @@ function createExitService({
       return { depositStatus: project.depositStatus, payout: null };
     }
 
+    // Idempotent if a prior attempt already moved the deposit
+    if (
+      (plan.depositDisposition === 'RETURNED' && project.depositStatus === 'RETURNED') ||
+      (plan.depositDisposition === 'FORFEITED' && project.depositStatus === 'FORFEITED')
+    ) {
+      return { depositStatus: project.depositStatus, payout: null, alreadySettled: true };
+    }
+
     const deposit =
       project.freelancerDeposits.find((d) => d.status === 'CAPTURED') ||
       project.freelancerDeposits[0] ||
@@ -326,13 +334,28 @@ function createExitService({
     assertParticipant(userId, project);
 
     const idempotencyKey = `exit:${project.id}`;
-    const existing = await db.exitEvent.findUnique({ where: { idempotencyKey } });
+    let existing = await db.exitEvent.findUnique({ where: { idempotencyKey } });
+    if (existing?.transferIds && existing.transferIds.pending === true) {
+      // Resume transfers after a crash between claim and settlement
+      return finalizeClaimedExit({
+        project,
+        exitEvent: existing,
+        userId,
+        resumed: true,
+      });
+    }
     if (existing || isCancelledStatus(project.status)) {
       return {
         alreadyExited: true,
         exitEvent: existing || project.exitEvents[0] || null,
         project,
       };
+    }
+    if (project.status === 'COMPLETED') {
+      const err = new Error('Completed projects cannot be cancelled or abandoned');
+      err.status = 409;
+      err.code = 'project_completed';
+      throw err;
     }
 
     const path = String(exitPath).toUpperCase();
@@ -362,68 +385,82 @@ function createExitService({
     const preview = previewForPath(project, path);
     const plan = preview.plan;
 
-    // 1) Penalty payout to freelancer (client one-sided)
-    let penaltyPayout = null;
-    if (plan.freelancerPayoutCents > 0) {
-      const email =
-        project.freelancer.paypalEmail ||
-        env.paypal.payoutEmail ||
-        project.freelancer.email;
-      penaltyPayout = await payoutAmount({
-        email,
-        amountCents: plan.freelancerPayoutCents,
-        currency: env.defaultMilestoneCurrency || 'USD',
-        senderBatchId: `penalty-${project.id}`,
-        senderItemId: `pen-${project.id}`,
-        note: `Early-exit penalty: ${project.title}`,
-      });
-    }
-
-    // 2) Refund remaining vault (minus penalty already paid out) to client
-    const vaultRefunds = await refundVaultToClient({
-      project,
-      amountCents: plan.clientRefundCents,
-    });
-
-    // 3) Deposit return / forfeit
-    const depositResult = await settleDeposit({ project, plan });
-
-    // 4) Mark milestones cancelled if still open
-    await db.milestone.updateMany({
-      where: {
-        projectId: project.id,
-        status: {
-          notIn: ['PAID', 'RELEASED', 'CANCELLED'],
-        },
-      },
-      data: { status: 'CANCELLED' },
-    });
-
-    // 5) Persist exit event + project status (unique key → idempotent under race)
+    // Claim exit BEFORE any PayPal transfers so concurrent callers cannot double-pay.
     let exitEvent;
     try {
-      exitEvent = await db.exitEvent.create({
-        data: {
-          projectId: project.id,
-          exitPath: path,
-          initiatedByUserId: userId,
-          reason: reason ? String(reason).slice(0, 2000) : null,
-          remainingVaultCents: plan.remainingVaultCents,
-          penaltyCents: plan.penaltyCents,
-          clientRefundCents: plan.clientRefundCents,
-          freelancerPayoutCents: plan.freelancerPayoutCents,
-          depositCents: plan.depositCents,
-          depositDisposition: plan.depositDisposition,
-          idempotencyKey,
-          transferIds: {
-            penaltyPayoutBatchId: penaltyPayout?.payoutBatchId || null,
-            penaltyPayoutItemId: penaltyPayout?.payoutItemId || null,
-            vaultRefunds,
-            depositBatchId: depositResult.payout?.payoutBatchId || null,
-            depositItemId: depositResult.payout?.payoutItemId || null,
-            mock: paypal.isMock(),
+      exitEvent = await db.$transaction(async (tx) => {
+        const fresh = await tx.project.findUnique({ where: { id: project.id } });
+        if (!fresh) {
+          const err = new Error('Project not found');
+          err.status = 404;
+          err.code = 'project_not_found';
+          throw err;
+        }
+        if (isCancelledStatus(fresh.status)) {
+          return null;
+        }
+        if (fresh.status === 'COMPLETED') {
+          const err = new Error('Completed projects cannot be cancelled or abandoned');
+          err.status = 409;
+          err.code = 'project_completed';
+          throw err;
+        }
+
+        const claimed = await tx.exitEvent.create({
+          data: {
+            projectId: project.id,
+            exitPath: path,
+            initiatedByUserId: userId,
+            reason: reason ? String(reason).slice(0, 2000) : null,
+            remainingVaultCents: plan.remainingVaultCents,
+            penaltyCents: plan.penaltyCents,
+            clientRefundCents: plan.clientRefundCents,
+            freelancerPayoutCents: plan.freelancerPayoutCents,
+            depositCents: plan.depositCents,
+            depositDisposition: plan.depositDisposition,
+            idempotencyKey,
+            transferIds: { pending: true, mock: paypal.isMock() },
           },
-        },
+        });
+
+        await tx.project.update({
+          where: { id: project.id },
+          data: { status: plan.projectStatus },
+        });
+
+        await tx.milestone.updateMany({
+          where: {
+            projectId: project.id,
+            status: { notIn: ['PAID', 'RELEASED', 'CANCELLED'] },
+          },
+          data: { status: 'CANCELLED' },
+        });
+
+        if (cancellationRequestId) {
+          await tx.cancellationRequest.update({
+            where: { id: cancellationRequestId },
+            data: {
+              status: 'ACCEPTED',
+              respondedByUserId: userId,
+              respondedAt: new Date(),
+            },
+          });
+          await tx.cancellationRequest.updateMany({
+            where: {
+              projectId: project.id,
+              status: 'PENDING',
+              id: { not: cancellationRequestId },
+            },
+            data: { status: 'SUPERSEDED' },
+          });
+        } else {
+          await tx.cancellationRequest.updateMany({
+            where: { projectId: project.id, status: 'PENDING' },
+            data: { status: 'SUPERSEDED' },
+          });
+        }
+
+        return claimed;
       });
     } catch (err) {
       if (err.code === 'P2002') {
@@ -433,33 +470,98 @@ function createExitService({
       throw err;
     }
 
-    if (cancellationRequestId) {
-      await db.cancellationRequest.update({
-        where: { id: cancellationRequestId },
-        data: {
-          status: 'ACCEPTED',
-          respondedByUserId: userId,
-          respondedAt: new Date(),
-        },
-      });
-      await db.cancellationRequest.updateMany({
-        where: {
-          projectId: project.id,
-          status: 'PENDING',
-          id: { not: cancellationRequestId },
-        },
-        data: { status: 'SUPERSEDED' },
-      });
-    } else {
-      await db.cancellationRequest.updateMany({
-        where: { projectId: project.id, status: 'PENDING' },
-        data: { status: 'SUPERSEDED' },
-      });
+    if (!exitEvent) {
+      const raced = await db.exitEvent.findUnique({ where: { idempotencyKey } });
+      return { alreadyExited: true, exitEvent: raced, project };
     }
 
-    const updatedProject = await db.project.update({
+    return finalizeClaimedExit({
+      project,
+      exitEvent,
+      userId,
+      plan,
+      lines: preview.lines,
+      alreadyExited: false,
+    });
+  }
+
+  async function finalizeClaimedExit({
+    project,
+    exitEvent,
+    userId,
+    plan = null,
+    lines = null,
+    alreadyExited = false,
+    resumed = false,
+  }) {
+    const prior = exitEvent.transferIds && typeof exitEvent.transferIds === 'object'
+      ? exitEvent.transferIds
+      : {};
+
+    const resolvedPlan =
+      plan ||
+      buildExitMoneyPlan({
+        exitPath: exitEvent.exitPath,
+        remainingVaultCents: exitEvent.remainingVaultCents,
+        earlyExitPenaltyPercent: project.earlyExitPenaltyPercent,
+        depositCents: exitEvent.depositCents,
+        depositStatus:
+          exitEvent.depositDisposition === 'NONE' ? 'PENDING' : 'HELD',
+      });
+
+    // Transfers after claim — sender batch ids are project-scoped for PayPal idempotency.
+    let penaltyPayout = null;
+    if (resolvedPlan.freelancerPayoutCents > 0) {
+      if (prior.penaltyPayoutBatchId) {
+        penaltyPayout = {
+          payoutBatchId: prior.penaltyPayoutBatchId,
+          payoutItemId: prior.penaltyPayoutItemId || null,
+          resumed: true,
+        };
+      } else {
+        const email =
+          project.freelancer.paypalEmail ||
+          env.paypal.payoutEmail ||
+          project.freelancer.email;
+        penaltyPayout = await payoutAmount({
+          email,
+          amountCents: resolvedPlan.freelancerPayoutCents,
+          currency: env.defaultMilestoneCurrency || 'USD',
+          senderBatchId: `penalty-${project.id}`,
+          senderItemId: `pen-${project.id}`,
+          note: `Early-exit penalty: ${project.title}`,
+        });
+      }
+    }
+
+    const vaultRefunds = await refundVaultToClient({
+      project,
+      amountCents: resolvedPlan.clientRefundCents,
+    });
+
+    const depositResult = await settleDeposit({ project, plan: resolvedPlan });
+
+    const updatedEvent = await db.exitEvent.update({
+      where: { id: exitEvent.id },
+      data: {
+        transferIds: {
+          pending: false,
+          penaltyPayoutBatchId:
+            penaltyPayout?.payoutBatchId || prior.penaltyPayoutBatchId || null,
+          penaltyPayoutItemId:
+            penaltyPayout?.payoutItemId || prior.penaltyPayoutItemId || null,
+          vaultRefunds,
+          depositBatchId:
+            depositResult.payout?.payoutBatchId || prior.depositBatchId || null,
+          depositItemId:
+            depositResult.payout?.payoutItemId || prior.depositItemId || null,
+          mock: paypal.isMock(),
+        },
+      },
+    });
+
+    const updatedProject = await db.project.findUnique({
       where: { id: project.id },
-      data: { status: plan.projectStatus },
       include: {
         milestones: { orderBy: { sequence: 'asc' } },
         client: { select: { id: true, email: true, name: true, role: true } },
@@ -471,17 +573,18 @@ function createExitService({
 
     await emitExitNotifications({
       project: updatedProject,
-      exitPath: path,
-      plan,
-      exitEvent,
+      exitPath: exitEvent.exitPath,
+      plan: resolvedPlan,
+      exitEvent: updatedEvent,
     });
 
     return {
-      alreadyExited: false,
-      exitEvent,
+      alreadyExited,
+      resumed,
+      exitEvent: updatedEvent,
       project: updatedProject,
-      plan,
-      lines: preview.lines,
+      plan: resolvedPlan,
+      lines: lines || describePlanLines(resolvedPlan),
       transfers: {
         penaltyPayout,
         vaultRefunds,
