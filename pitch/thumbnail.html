@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aegis-Split thumbnail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@600;700&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #04110f;
+        font-family: "Figtree", "Avenir Next", sans-serif;
+        color: #d8efe8;
+      }
+
+      .frame {
+        width: 1280px;
+        height: 720px;
+        position: relative;
+        background:
+          radial-gradient(780px 460px at 8% -10%, rgba(23, 163, 138, 0.5), transparent 60%),
+          radial-gradient(640px 420px at 100% 110%, rgba(232, 184, 74, 0.28), transparent 55%),
+          linear-gradient(165deg, #04110f 0%, #0a2420 52%, #071816 100%);
+      }
+
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(216, 239, 232, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(216, 239, 232, 0.05) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(ellipse at 30% 40%, black 20%, transparent 75%);
+      }
+
+      .copy {
+        position: relative;
+        z-index: 1;
+        padding: 78px 84px 0;
+      }
+
+      .kicker {
+        margin: 0;
+        color: #e8b84a;
+        letter-spacing: 0.22em;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 18px 0 0;
+        font-family: "Syne", "Avenir Next", sans-serif;
+        font-weight: 800;
+        font-size: 92px;
+        letter-spacing: -0.05em;
+        line-height: 0.9;
+        width: fit-content;
+        max-width: 1080px;
+        background: linear-gradient(100deg, #d8efe8 0%, #17a38a 46%, #e8b84a 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .lines {
+        margin: 26px 0 0;
+        max-width: 720px;
+        font-family: "Syne", "Avenir Next", sans-serif;
+        font-weight: 700;
+        font-size: 52px;
+        letter-spacing: -0.04em;
+        line-height: 1.05;
+      }
+
+      .lines span {
+        display: block;
+      }
+
+      .paid {
+        color: #e8b84a;
+      }
+
+      .steps {
+        position: absolute;
+        left: 84px;
+        bottom: 58px;
+        display: flex;
+        gap: 14px;
+        z-index: 1;
+      }
+
+      .steps div {
+        border: 1px solid rgba(216, 239, 232, 0.2);
+        background: rgba(8, 28, 25, 0.72);
+        border-radius: 999px;
+        padding: 12px 22px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        font-size: 18px;
+      }
+
+      .card {
+        position: absolute;
+        right: 72px;
+        top: 292px;
+        width: 300px;
+        z-index: 1;
+        border-radius: 28px;
+        border: 1px solid rgba(31, 157, 106, 0.7);
+        background: rgba(31, 157, 106, 0.16);
+        padding: 28px 28px 32px;
+      }
+
+      .card .label {
+        margin: 0;
+        letter-spacing: 0.16em;
+        font-size: 16px;
+        font-weight: 700;
+        color: #8ee0bf;
+      }
+
+      .card strong {
+        display: block;
+        margin-top: 8px;
+        font-family: "Syne", "Avenir Next", sans-serif;
+        font-size: 72px;
+        letter-spacing: -0.05em;
+        line-height: 0.95;
+      }
+
+      .card .who {
+        margin: 6px 0 0;
+        font-size: 22px;
+        color: #d8efe8;
+      }
+
+      .card .status {
+        margin: 16px 0 0;
+        font-family: "Syne", "Avenir Next", sans-serif;
+        font-weight: 800;
+        font-size: 36px;
+        color: #e8b84a;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="grid"></div>
+      <div class="copy">
+        <p class="kicker">HACKATHON PITCH</p>
+        <h1>Aegis-Split</h1>
+        <div class="lines">
+          <span>Money locked.</span>
+          <span>Code proven.</span>
+          <span class="paid">Paid.</span>
+        </div>
+      </div>
+      <aside class="card">
+        <p class="label">PAYPAL PAYOUTS</p>
+        <strong>$250</strong>
+        <p class="who">Rohan Mehta</p>
+        <p class="status">PAID</p>
+      </aside>
+      <div class="steps">
+        <div>FUND</div>
+        <div>MERGE</div>
+        <div>AUDIT</div>
+        <div>PAY</div>
+      </div>
+    </div>
+  </body>
+</html>
