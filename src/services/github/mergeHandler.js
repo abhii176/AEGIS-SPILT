@@ -2,6 +2,7 @@ const { prisma } = require('../../lib/prisma');
 const { createEscrowService } = require('../paypal/escrow');
 const { createGithubClient } = require('./client');
 const { createNotificationService } = require('../notifications');
+const { assertProjectNotCancelled } = require('../../lib/projectStatus');
 const aiAuditor = require('../aiAuditor');
 
 /** Statuses that imply escrow was locked before merge audit/release */
@@ -102,6 +103,8 @@ function createMergeHandler({
       err.code = 'milestone_not_linked';
       throw err;
     }
+
+    assertProjectNotCancelled(milestone.project, 'merging / auditing');
 
     if (['RELEASED', 'PAID'].includes(milestone.status)) {
       return {

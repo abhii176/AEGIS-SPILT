@@ -20,6 +20,22 @@ function testCreateProjectValidation() {
       clientId: 'u1',
     }).errors.includes('invalid_parties')
   );
+  assert.ok(
+    validateCreateProjectBody({
+      title: 'App',
+      freelancerId: 'u2',
+      earlyExitPenaltyPercent: 150,
+    }).errors.includes('invalid_early_exit_penalty_percent')
+  );
+  assert.strictEqual(
+    validateCreateProjectBody({
+      title: 'App',
+      freelancerId: 'u2',
+      earlyExitPenaltyPercent: 50,
+      freelancerDepositAmountCents: 2500,
+    }).ok,
+    true
+  );
 }
 
 function testAddMilestoneValidation() {

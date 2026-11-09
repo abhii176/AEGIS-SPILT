@@ -30,6 +30,20 @@ function validateCreateProjectBody(body = {}) {
     errors.push('description_too_long');
   }
 
+  if (body.earlyExitPenaltyPercent != null && body.earlyExitPenaltyPercent !== '') {
+    const pct = Number(body.earlyExitPenaltyPercent);
+    if (!Number.isInteger(pct) || pct < 0 || pct > 100) {
+      errors.push('invalid_early_exit_penalty_percent');
+    }
+  }
+
+  if (body.freelancerDepositAmountCents != null && body.freelancerDepositAmountCents !== '') {
+    const dep = Number(body.freelancerDepositAmountCents);
+    if (!Number.isInteger(dep) || dep < 0 || dep > 1_000_000_000) {
+      errors.push('invalid_freelancer_deposit_amount');
+    }
+  }
+
   return { ok: errors.length === 0, errors };
 }
 

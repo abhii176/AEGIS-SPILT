@@ -19,6 +19,7 @@ function createPaypalService(options = {}) {
     createOrder: (...args) => orders.createOrder(...args),
     getOrder: (...args) => orders.getOrder(...args),
     captureOrder: (...args) => orders.captureOrder(...args),
+    refundCapture: (...args) => orders.refundCapture(...args),
     createPayout: (...args) => payouts.createPayout(...args),
   };
 }

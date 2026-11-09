@@ -104,7 +104,7 @@
       <section class="panel" id="panel-verify" data-step="verify">
         <div class="step-frame">
           <p class="step-kicker">Step 2</p>
-          <h2>Gov ID + monitoring consent</h2>
+          <h2>Gov ID + User Consent Agreement</h2>
           <p class="step-lead">
             Both gates must pass before projects, funding, or merges. Demo scaffolds DigiLocker (IN) / Stripe Identity (intl).
           </p>
@@ -114,8 +114,26 @@
           </div>
           <div class="action-row">
             <button type="button" class="btn primary" id="btn-verify-id">Verify government ID</button>
-            <button type="button" class="btn secondary" id="btn-consent">Grant monitoring consent</button>
-            <button type="button" class="btn ghost" data-go="project" id="btn-verify-next" disabled>Continue</button>
+          </div>
+          <div class="consent-box" id="consent-box">
+            <p class="consent-title">Aegis-Split User Consent Agreement <span id="consent-version">v2.0.0</span></p>
+            <pre class="consent-md" id="consent-md">Loading agreement…</pre>
+            <label class="check-inline">
+              <input type="checkbox" id="consent-agree" />
+              I agree to the Aegis-Split User Consent Agreement
+            </label>
+            <label>
+              Full name
+              <input id="consent-name" type="text" placeholder="Your legal name" autocomplete="name" />
+            </label>
+            <label>
+              Date
+              <input id="consent-date" type="date" />
+            </label>
+            <div class="action-row">
+              <button type="button" class="btn secondary" id="btn-consent">Sign &amp; grant consent</button>
+              <button type="button" class="btn ghost" data-go="project" id="btn-verify-next" disabled>Continue</button>
+            </div>
           </div>
           <pre class="log" id="log-verify" hidden></pre>
         </div>
@@ -141,6 +159,14 @@
               <input name="amountUsd" type="number" min="1" step="1" value="250" required />
             </label>
             <label>
+              Early-exit penalty %
+              <input name="earlyExitPenaltyPercent" type="number" min="0" max="100" step="1" value="50" />
+            </label>
+            <label>
+              Freelancer deposit (USD, blank = 10% of milestones)
+              <input name="depositUsd" type="number" min="0" step="0.01" placeholder="auto 10%" />
+            </label>
+            <label>
               Acceptance criteria
               <textarea name="acceptanceCriteria" rows="3" required>Ship hero CTA; login form; session cookie; Lighthouse a11y >= 90</textarea>
             </label>
@@ -149,6 +175,9 @@
               <button type="button" class="btn ghost" data-go="fund" id="btn-project-next" disabled>Continue</button>
             </div>
           </form>
+          <div class="project-meta" id="project-meta" hidden>
+            <p><strong>Penalty:</strong> <span id="meta-penalty">—</span>% · <strong>Deposit:</strong> <span id="meta-deposit">—</span> · <strong>Status:</strong> <span id="meta-status">—</span></p>
+          </div>
           <pre class="log" id="log-project" hidden></pre>
         </div>
       </section>
@@ -171,7 +200,42 @@
             <a class="btn secondary" id="link-approve" href="#" target="_blank" rel="noopener" hidden>Open PayPal approve</a>
             <button type="button" class="btn ghost" data-go="github" id="btn-fund-next" disabled>Continue</button>
           </div>
+          <div class="action-row">
+            <button type="button" class="btn secondary" id="btn-deposit">Fund freelancer deposit</button>
+            <a class="btn ghost" id="link-deposit-approve" href="#" target="_blank" rel="noopener" hidden>Open deposit approve</a>
+          </div>
           <pre class="log" id="log-fund" hidden></pre>
+        </div>
+      </section>
+
+      <!-- CANCEL / EXIT -->
+      <section class="panel" id="panel-exit" data-step="exit">
+        <div class="step-frame">
+          <p class="step-kicker">Exit</p>
+          <h2>Cancel / Exit</h2>
+          <p class="step-lead">
+            Preview exactly where money goes, then confirm. Mutual needs both parties; one-sided paths apply Section 3 rules.
+          </p>
+          <div class="exit-actions">
+            <button type="button" class="btn secondary" id="btn-exit-preview-mutual" data-path="MUTUAL">Preview mutual cancel</button>
+            <button type="button" class="btn secondary" id="btn-exit-preview-client" data-path="CLIENT_ONESIDED">Preview client cancel</button>
+            <button type="button" class="btn secondary" id="btn-exit-preview-walk" data-path="FREELANCER_WALKAWAY">Preview walk-away</button>
+          </div>
+          <div class="exit-preview" id="exit-preview" hidden>
+            <h3>Money before confirm</h3>
+            <ul id="exit-lines"></ul>
+            <p class="exit-warn" id="exit-warn"></p>
+            <div class="action-row" id="exit-confirm-row">
+              <button type="button" class="btn primary" id="btn-exit-confirm">Confirm exit</button>
+              <button type="button" class="btn ghost" id="btn-exit-dismiss">Dismiss</button>
+            </div>
+          </div>
+          <div class="action-row">
+            <button type="button" class="btn secondary" id="btn-cancel-request">Request mutual cancel</button>
+            <button type="button" class="btn secondary" id="btn-cancel-accept">Accept mutual cancel</button>
+            <button type="button" class="btn ghost" data-go="fund">Back to fund</button>
+          </div>
+          <pre class="log" id="log-exit" hidden></pre>
         </div>
       </section>
 
@@ -233,12 +297,25 @@
           </div>
           <div class="action-row">
             <button type="button" class="btn secondary" id="btn-refresh-paid">Refresh status</button>
+            <button type="button" class="btn ghost" data-go="exit">Cancel / Exit</button>
             <button type="button" class="btn ghost" data-go="landing">Back to start</button>
           </div>
           <pre class="log" id="log-paid" hidden></pre>
         </div>
       </section>
     </main>
+
+    <dialog id="exit-dialog">
+      <form method="dialog" class="exit-dialog-body">
+        <h3>Confirm exit</h3>
+        <p id="exit-dialog-summary">Review the money lines before confirming.</p>
+        <ul id="exit-dialog-lines"></ul>
+        <menu class="action-row">
+          <button type="submit" value="cancel" class="btn ghost">Go back</button>
+          <button type="submit" value="confirm" class="btn primary" id="exit-dialog-ok">Confirm</button>
+        </menu>
+      </form>
+    </dialog>
 
     <footer class="site-foot">
       <span>Demo UI · Express API on same origin</span>

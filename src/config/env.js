@@ -63,7 +63,7 @@ const env = {
     ),
   },
 
-  monitoringConsentVersion: optional('MONITORING_CONSENT_VERSION', '1.0.0'),
+  monitoringConsentVersion: optional('MONITORING_CONSENT_VERSION', '2.0.0'),
   defaultMilestoneCurrency: optional('DEFAULT_MILESTONE_CURRENCY', 'USD'),
 
   paypal: {

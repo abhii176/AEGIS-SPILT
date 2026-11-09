@@ -1,6 +1,7 @@
 const { prisma } = require('../lib/prisma');
 const { loadProjectOrFail } = require('./milestonesController');
 const { validateGithubLinkBody } = require('../lib/requestValidation');
+const { assertProjectNotCancelled } = require('../lib/projectStatus');
 
 /**
  * POST /api/projects/:projectId/milestones/:milestoneId/github
@@ -9,7 +10,8 @@ const { validateGithubLinkBody } = require('../lib/requestValidation');
 async function linkGithubToMilestone(req, res, next) {
   try {
     const { projectId, milestoneId } = req.params;
-    await loadProjectOrFail(projectId, req.user.id);
+    const project = await loadProjectOrFail(projectId, req.user.id);
+    assertProjectNotCancelled(project, 'linking GitHub');
 
     const milestone = await prisma.milestone.findFirst({
       where: { id: String(milestoneId), projectId: String(projectId) },

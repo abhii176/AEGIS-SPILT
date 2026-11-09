@@ -1,11 +1,13 @@
 const { env } = require('../config/env');
 const { createEscrowService } = require('../services/paypal/escrow');
+const { createDepositService } = require('../services/exit/depositService');
 const {
   validateFundVaultBody,
   validateCaptureVaultBody,
 } = require('../lib/requestValidation');
 
 const escrow = createEscrowService();
+const deposits = createDepositService();
 
 function wantsJson(req) {
   const accept = String(req.headers.accept || '');
@@ -105,11 +107,30 @@ async function paypalReturn(req, res, next) {
       req.body?.orderId ||
       null;
 
-    const result = await escrow.completeVaultAfterApproval({ orderId });
+    let kind = 'vault';
+    let result;
+    try {
+      result = await escrow.completeVaultAfterApproval({ orderId });
+    } catch (err) {
+      if (err.code !== 'vault_fund_not_found') throw err;
+      kind = 'deposit';
+      result = await deposits.captureDeposit({ orderId: String(orderId), requireApproved: true });
+    }
 
     if (wantsJson(req)) {
+      if (kind === 'deposit') {
+        return res.status(200).json({
+          ok: true,
+          kind: 'deposit',
+          deposit: result.deposit,
+          alreadyCaptured: result.alreadyCaptured,
+          paypal: result.paypal || null,
+          note: 'PayPal order captured — freelancer security deposit held.',
+        });
+      }
       return res.status(200).json({
         ok: true,
+        kind: 'vault',
         vaultFund: result.vaultFund,
         alreadyCaptured: result.alreadyCaptured,
         paypal: result.paypal || null,
@@ -117,8 +138,15 @@ async function paypalReturn(req, res, next) {
       });
     }
 
-    const fundId = result.vaultFund?.id || '';
-    const captureId = result.vaultFund?.paypalCaptureId || result.paypal?.captureId || '';
+    const fundId =
+      kind === 'deposit'
+        ? result.deposit?.id || ''
+        : result.vaultFund?.id || '';
+    const captureId =
+      kind === 'deposit'
+        ? result.deposit?.paypalCaptureId || result.paypal?.captureId || ''
+        : result.vaultFund?.paypalCaptureId || result.paypal?.captureId || '';
+    const label = kind === 'deposit' ? 'Security deposit held.' : 'Escrow funds are locked in the Aegis-Split vault.';
     return res
       .status(200)
       .type('html')
@@ -128,10 +156,10 @@ async function paypalReturn(req, res, next) {
 .ok{color:#0a7a3e;font-weight:600}</style></head>
 <body>
   <p class="ok">Payment approved and captured.</p>
-  <p>Escrow funds are locked in the Aegis-Split vault.</p>
+  <p>${label}</p>
   <ul>
     <li>Order: <code>${String(orderId || '').replace(/[<>&]/g, '')}</code></li>
-    <li>Vault fund: <code>${String(fundId).replace(/[<>&]/g, '')}</code></li>
+    <li>${kind === 'deposit' ? 'Deposit' : 'Vault fund'}: <code>${String(fundId).replace(/[<>&]/g, '')}</code></li>
     <li>Capture: <code>${String(captureId).replace(/[<>&]/g, '')}</code></li>
   </ul>
   <p><a href="${env.appBaseUrl}/">Continue</a></p>
@@ -174,17 +202,31 @@ async function paypalCancel(req, res, next) {
       throw err;
     }
 
-    const result = await escrow.cancelVaultFund({ orderId, vaultFundId });
+    let kind = 'vault';
+    let result;
+    try {
+      result = await escrow.cancelVaultFund({ orderId, vaultFundId });
+    } catch (err) {
+      if (err.code !== 'vault_fund_not_found') throw err;
+      kind = 'deposit';
+      result = await deposits.cancelDeposit({ orderId, depositId: vaultFundId });
+    }
 
     if (wantsJson(req)) {
       return res.status(200).json({
         ok: true,
-        vaultFund: result.vaultFund,
+        kind,
+        vaultFund: kind === 'vault' ? result.vaultFund : undefined,
+        deposit: kind === 'deposit' ? result.deposit : undefined,
         alreadyCancelled: result.alreadyCancelled,
         note: 'Funding cancelled — no funds captured.',
       });
     }
 
+    const statusLabel =
+      kind === 'deposit'
+        ? result.deposit?.status || ''
+        : result.vaultFund?.status || '';
     return res
       .status(200)
       .type('html')
@@ -193,7 +235,7 @@ async function paypalCancel(req, res, next) {
 <style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5}</style></head>
 <body>
   <p>PayPal checkout cancelled. No funds were captured.</p>
-  <p>Vault fund status: <code>${String(result.vaultFund?.status || '').replace(/[<>&]/g, '')}</code></p>
+  <p>${kind === 'deposit' ? 'Deposit' : 'Vault fund'} status: <code>${String(statusLabel).replace(/[<>&]/g, '')}</code></p>
   <p><a href="${env.appBaseUrl}/">Back</a></p>
 </body></html>`);
   } catch (err) {

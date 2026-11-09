@@ -1,5 +1,6 @@
 const { prisma } = require('../lib/prisma');
 const { validateMergeBody } = require('../lib/requestValidation');
+const { assertProjectNotCancelled } = require('../lib/projectStatus');
 
 /** POST /api/merge — gated by requireKycAndConsent */
 async function mergeCode(req, res, next) {
@@ -7,6 +8,13 @@ async function mergeCode(req, res, next) {
     const validation = validateMergeBody(req.body || {});
     if (!validation.ok) {
       return res.status(400).json({ error: validation.errors[0] });
+    }
+
+    if (validation.projectId) {
+      const project = await prisma.project.findUnique({
+        where: { id: String(validation.projectId) },
+      });
+      if (project) assertProjectNotCancelled(project, 'recording merges');
     }
 
     const event = await prisma.mergeEvent.create({

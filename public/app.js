@@ -7,6 +7,7 @@ const STEPS = [
   { id: 'github', label: 'GitHub' },
   { id: 'audit', label: 'Audit' },
   { id: 'paid', label: 'Paid' },
+  { id: 'exit', label: 'Exit' },
 ];
 
 const state = {
@@ -19,6 +20,9 @@ const state = {
   approvalUrl: '',
   lastAudit: null,
   lastMilestone: null,
+  lastProject: null,
+  pendingExitPath: null,
+  pendingExitPreview: null,
   notifications: [],
   unreadCount: 0,
   seenNotifIds: new Set(JSON.parse(localStorage.getItem('aegis.seenNotifs') || '[]')),
@@ -281,10 +285,43 @@ async function verifyIdentity() {
   await refreshMe();
 }
 
+async function loadConsentAgreement() {
+  try {
+    const data = await api('/api/consent/agreement', { auth: false });
+    const md = $('#consent-md');
+    const ver = $('#consent-version');
+    if (md) md.textContent = data.markdown || '';
+    if (ver) ver.textContent = `v${data.version || '2.0.0'}`;
+  } catch {
+    const md = $('#consent-md');
+    if (md) md.textContent = 'Could not load agreement — try refresh.';
+  }
+  const dateEl = $('#consent-date');
+  if (dateEl && !dateEl.value) {
+    dateEl.value = new Date().toISOString().slice(0, 10);
+  }
+  const nameEl = $('#consent-name');
+  if (nameEl && !nameEl.value && state.user?.name) {
+    nameEl.value = state.user.name;
+  }
+}
+
 async function grantConsent() {
+  const agreed = $('#consent-agree')?.checked;
+  const agreedName = String($('#consent-name')?.value || '').trim();
+  const agreedDate = String($('#consent-date')?.value || '').trim();
+  if (!agreed) throw new Error('Tick “I agree” first');
+  if (!agreedName) throw new Error('Enter your full name');
+  if (!agreedDate) throw new Error('Enter the agreement date');
+
   const result = await api('/api/consent/monitoring', {
     method: 'POST',
-    body: { accepted: true },
+    body: {
+      accepted: true,
+      agreedName,
+      agreedDate,
+      consentVersion: '2.0.0',
+    },
   });
   showLog('#log-verify', result);
   await refreshMe();
@@ -308,6 +345,17 @@ async function createProjectAndMilestone(form) {
   // Both parties need KYC+consent; ensure Sarah is verified for create
   await ensureActorReady(sarah.id);
 
+  const penaltyRaw = fd.get('earlyExitPenaltyPercent');
+  const depositUsdRaw = fd.get('depositUsd');
+  const earlyExitPenaltyPercent =
+    penaltyRaw != null && String(penaltyRaw).trim() !== ''
+      ? Number(penaltyRaw)
+      : 50;
+  let freelancerDepositAmountCents;
+  if (depositUsdRaw != null && String(depositUsdRaw).trim() !== '') {
+    freelancerDepositAmountCents = Math.round(Number(depositUsdRaw) * 100);
+  }
+
   const { project } = await api('/api/projects', {
     method: 'POST',
     body: {
@@ -316,6 +364,10 @@ async function createProjectAndMilestone(form) {
       freelancerId: rohan.id,
       clientId: sarah.id,
       status: 'ACTIVE',
+      earlyExitPenaltyPercent,
+      ...(freelancerDepositAmountCents != null
+        ? { freelancerDepositAmountCents }
+        : {}),
     },
   });
 
@@ -334,9 +386,24 @@ async function createProjectAndMilestone(form) {
   state.projectId = project.id;
   state.milestoneId = milestone.id;
   state.lastMilestone = milestone;
+  state.lastProject = project;
   persist();
   $('#btn-project-next').disabled = false;
+  renderProjectMeta(project, amountCents);
   showLog('#log-project', { project, milestone });
+}
+
+function renderProjectMeta(project, milestoneTotalCents) {
+  const box = $('#project-meta');
+  if (!box || !project) return;
+  box.hidden = false;
+  const deposit =
+    project.effectiveDepositAmountCents ??
+    project.freelancerDepositAmountCents ??
+    Math.floor(((milestoneTotalCents || 0) * 10) / 100);
+  $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 50);
+  $('#meta-deposit').textContent = `$${(deposit / 100).toFixed(2)} (${project.depositStatus || 'PENDING'})`;
+  $('#meta-status').textContent = project.status || '—';
 }
 
 async function ensureActorReady(userId) {
@@ -361,11 +428,124 @@ async function ensureActorReady(userId) {
     user = (await api('/api/auth/me')).user;
   }
   if (!user.monitoringConsentGranted) {
-    await api('/api/consent/monitoring', { method: 'POST', body: { accepted: true } });
+    await api('/api/consent/monitoring', {
+      method: 'POST',
+      body: {
+        accepted: true,
+        agreedName: user.name || 'Demo User',
+        agreedDate: new Date().toISOString().slice(0, 10),
+        consentVersion: '2.0.0',
+      },
+    });
     user = (await api('/api/auth/me')).user;
   }
   state.user = user;
   return user;
+}
+
+function formatExitLines(lines = []) {
+  return lines
+    .map((l) => {
+      const usd = `$${(Number(l.amountCents || 0) / 100).toFixed(2)}`;
+      return `<li><strong>${escapeHtml(usd)}</strong> → ${escapeHtml(l.to)} — ${escapeHtml(l.label)}</li>`;
+    })
+    .join('');
+}
+
+async function previewExit(path) {
+  if (!state.projectId) throw new Error('Create a project first');
+  const data = await api(
+    `/api/projects/${state.projectId}/exit/preview?path=${encodeURIComponent(path)}`
+  );
+  state.pendingExitPath = path;
+  state.pendingExitPreview = data.preview;
+  const box = $('#exit-preview');
+  box.hidden = false;
+  $('#exit-lines').innerHTML = formatExitLines(data.preview?.lines || []);
+  $('#exit-warn').textContent =
+    path === 'MUTUAL'
+      ? 'Mutual cancel: request then the other party accepts. Preview shows money if accepted now.'
+      : path === 'CLIENT_ONESIDED'
+        ? 'Client one-sided: penalty from remaining vault → freelancer; rest → client; deposit returned.'
+        : 'Walk-away: deposit forfeited to client; vault refunded 100% to client.';
+  showLog('#log-exit', data);
+  return data;
+}
+
+async function confirmPendingExit() {
+  const path = state.pendingExitPath;
+  if (!path || !state.projectId) throw new Error('Preview an exit path first');
+  const preview = state.pendingExitPreview;
+  const dialog = $('#exit-dialog');
+  $('#exit-dialog-summary').textContent = `Confirm ${path} for this project. Money will move as listed:`;
+  $('#exit-dialog-lines').innerHTML = formatExitLines(preview?.lines || []);
+
+  const confirmed = await new Promise((resolve) => {
+    const onClose = () => {
+      dialog.removeEventListener('close', onClose);
+      resolve(dialog.returnValue === 'confirm');
+    };
+    dialog.addEventListener('close', onClose);
+    dialog.showModal();
+  });
+  if (!confirmed) return null;
+
+  let result;
+  if (path === 'MUTUAL') {
+    // Ensure request exists from the other actor if needed — demo: request then accept with switch
+    result = await api(`/api/projects/${state.projectId}/cancel/request`, {
+      method: 'POST',
+      body: { reason: 'Demo mutual cancel' },
+    });
+    showLog('#log-exit', { step: 'requested', ...result });
+    return result;
+  }
+  if (path === 'CLIENT_ONESIDED') {
+    const sarah = state.users.sarah;
+    if (sarah?.id) await ensureActorReady(sarah.id);
+    result = await api(`/api/projects/${state.projectId}/exit/client`, {
+      method: 'POST',
+      body: { reason: 'Demo client one-sided cancel' },
+    });
+  } else {
+    const rohan = state.users.rohan;
+    if (rohan?.id) await ensureActorReady(rohan.id);
+    result = await api(`/api/projects/${state.projectId}/exit/abandon`, {
+      method: 'POST',
+      body: { reason: 'Demo freelancer walk-away' },
+    });
+  }
+  state.lastProject = result.project || state.lastProject;
+  if (result.project) renderProjectMeta(result.project);
+  showLog('#log-exit', result);
+  await refreshNotifications({ toastNew: true });
+  return result;
+}
+
+async function fundDeposit() {
+  if (!state.projectId) throw new Error('Create a project first');
+  const rohan = state.users.rohan;
+  if (!rohan?.id) throw new Error('Seed Rohan first');
+  await ensureActorReady(rohan.id);
+  const capture = $('#fund-capture')?.checked;
+  const data = await api(`/api/projects/${state.projectId}/deposit/fund`, {
+    method: 'POST',
+    body: { ...(capture ? { capture: true } : {}) },
+  });
+  const approvalUrl = data.approveUrl || data.paypal?.approvalUrl || '';
+  const link = $('#link-deposit-approve');
+  if (approvalUrl && !capture) {
+    link.hidden = false;
+    link.href = approvalUrl;
+  } else {
+    link.hidden = true;
+  }
+  if (data.project) {
+    state.lastProject = data.project;
+    renderProjectMeta(data.project);
+  }
+  showLog('#log-fund', { deposit: data });
+  await refreshNotifications({ toastNew: true });
 }
 
 async function fundVault() {
@@ -593,6 +773,86 @@ function bindUi() {
     }
   });
 
+  $('#btn-deposit')?.addEventListener('click', async () => {
+    try {
+      await fundDeposit();
+    } catch (err) {
+      showLog('#log-fund', err.data || err.message);
+    }
+  });
+
+  $all('[data-path]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      try {
+        await previewExit(btn.dataset.path);
+      } catch (err) {
+        showLog('#log-exit', err.data || err.message);
+      }
+    });
+  });
+
+  $('#btn-exit-confirm')?.addEventListener('click', async () => {
+    try {
+      await confirmPendingExit();
+    } catch (err) {
+      showLog('#log-exit', err.data || err.message);
+    }
+  });
+
+  $('#btn-exit-dismiss')?.addEventListener('click', () => {
+    const box = $('#exit-preview');
+    if (box) box.hidden = true;
+    state.pendingExitPath = null;
+    state.pendingExitPreview = null;
+  });
+
+  $('#btn-cancel-request')?.addEventListener('click', async () => {
+    try {
+      if (!state.projectId) throw new Error('Create a project first');
+      const data = await api(`/api/projects/${state.projectId}/cancel/request`, {
+        method: 'POST',
+        body: { reason: 'Demo mutual cancel request' },
+      });
+      showLog('#log-exit', data);
+      await refreshNotifications({ toastNew: true });
+    } catch (err) {
+      showLog('#log-exit', err.data || err.message);
+    }
+  });
+
+  $('#btn-cancel-accept')?.addEventListener('click', async () => {
+    try {
+      if (!state.projectId) throw new Error('Create a project first');
+      const preview = await api(
+        `/api/projects/${state.projectId}/exit/preview?path=MUTUAL`
+      );
+      state.pendingExitPath = 'MUTUAL';
+      state.pendingExitPreview = preview.preview;
+      const dialog = $('#exit-dialog');
+      $('#exit-dialog-summary').textContent =
+        'Accept mutual cancel? Money will move as listed:';
+      $('#exit-dialog-lines').innerHTML = formatExitLines(preview.preview?.lines || []);
+      const confirmed = await new Promise((resolve) => {
+        const onClose = () => {
+          dialog.removeEventListener('close', onClose);
+          resolve(dialog.returnValue === 'confirm');
+        };
+        dialog.addEventListener('close', onClose);
+        dialog.showModal();
+      });
+      if (!confirmed) return;
+      const data = await api(`/api/projects/${state.projectId}/cancel/accept`, {
+        method: 'POST',
+        body: {},
+      });
+      if (data.project) renderProjectMeta(data.project);
+      showLog('#log-exit', data);
+      await refreshNotifications({ toastNew: true });
+    } catch (err) {
+      showLog('#log-exit', err.data || err.message);
+    }
+  });
+
   $('#form-github').addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
@@ -652,6 +912,7 @@ function bindUi() {
 
 async function boot() {
   bindUi();
+  await loadConsentAgreement();
   const hash = (location.hash || '#landing').slice(1);
   go(STEPS.some((s) => s.id === hash) ? hash : 'landing');
 
