@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aegis-Split — Project presentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --ink: #0b1c1a;
+        --fog: #d8efe8;
+        --mist: #a8d5c8;
+        --sea: #17a38a;
+        --gold: #e8b84a;
+        --coral: #e05a3c;
+        --line: rgba(216, 239, 232, 0.16);
+        --glass: rgba(8, 28, 25, 0.72);
+        --display: "Syne", "Avenir Next", sans-serif;
+        --body: "Figtree", "Avenir Next", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #04110f; color: var(--fog); font-family: var(--body); }
+      button, a { font-family: inherit; }
+
+      .stage {
+        height: 100%;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(900px 520px at 12% 0%, rgba(23, 163, 138, 0.28), transparent 60%),
+          radial-gradient(700px 480px at 100% 100%, rgba(232, 184, 74, 0.16), transparent 55%),
+          #04110f;
+      }
+
+      .deck {
+        width: min(1280px, calc(100vw - 48px));
+        height: min(720px, calc(100vh - 96px));
+        position: relative;
+      }
+
+      .slide {
+        display: none;
+        height: 100%;
+        padding: 42px 52px 64px;
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        background:
+          linear-gradient(165deg, rgba(10, 36, 32, 0.92), rgba(4, 17, 15, 0.94));
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+      }
+
+      .slide.active { display: flex; flex-direction: column; }
+
+      .kicker {
+        margin: 0;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--gold);
+      }
+
+      h1, h2 {
+        font-family: var(--display);
+        letter-spacing: -0.045em;
+        line-height: 0.96;
+        margin: 14px 0 0;
+        font-weight: 800;
+      }
+
+      h1 { font-size: 84px; }
+      h2 { font-size: 58px; max-width: 16ch; }
+      .lede { margin: 18px 0 0; font-size: 26px; line-height: 1.35; color: var(--mist); max-width: 34ch; }
+      .tag { margin-top: 28px; font-size: 22px; color: var(--fog); }
+
+      .grid { display: grid; gap: 16px; margin-top: 28px; }
+      .grid.two { grid-template-columns: 1fr 1fr; }
+      .grid.three { grid-template-columns: 1fr 1fr 1fr; }
+
+      .card {
+        background: var(--glass);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 20px 22px;
+      }
+
+      .card strong {
+        display: block;
+        font-family: var(--display);
+        font-size: 28px;
+        letter-spacing: -0.03em;
+        margin-bottom: 6px;
+      }
+
+      .card p, li { margin: 0; color: var(--mist); font-size: 18px; line-height: 1.4; }
+      .card .role { color: var(--gold); letter-spacing: 0.14em; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+      .card em { font-style: normal; color: var(--gold); }
+
+      ol.steps, ul.clean { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+      ol.steps li, ul.clean li {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 12px;
+        align-items: center;
+        background: var(--glass);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 12px 16px;
+        color: var(--fog);
+        font-size: 20px;
+      }
+      ol.steps b {
+        font-family: var(--display);
+        color: var(--gold);
+        font-size: 22px;
+      }
+
+      table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 18px; }
+      th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--gold); font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+      td:first-child { font-weight: 700; width: 28%; color: var(--fog); }
+
+      .flow {
+        margin-top: 36px;
+        display: grid;
+        grid-template-columns: 1fr 28px 1fr 28px 1fr 28px 1fr;
+        align-items: center;
+        gap: 8px;
+      }
+      .node {
+        background: var(--glass);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px 14px;
+        min-height: 150px;
+      }
+      .node b { display: block; font-family: var(--display); font-size: 24px; margin-bottom: 8px; }
+      .node span { color: var(--mist); font-size: 16px; line-height: 1.35; }
+      .arrow { text-align: center; color: var(--gold); font-size: 28px; }
+
+      .url {
+        margin-top: 22px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        color: var(--gold);
+        font-size: 26px;
+      }
+      .fine { margin-top: 10px; color: var(--mist); font-size: 20px; }
+
+      .chrome {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 28px;
+        color: rgba(216, 239, 232, 0.55);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        pointer-events: none;
+      }
+
+      .bar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 4px;
+        background: rgba(216, 239, 232, 0.08);
+      }
+      .bar span {
+        display: block;
+        height: 100%;
+        background: linear-gradient(90deg, var(--sea), var(--gold));
+        width: 0;
+      }
+
+      .help {
+        position: fixed;
+        top: 16px;
+        right: 18px;
+        color: rgba(216, 239, 232, 0.55);
+        font-size: 13px;
+      }
+
+      .notes {
+        display: none;
+        position: fixed;
+        left: 24px;
+        right: 24px;
+        bottom: 18px;
+        background: rgba(4, 16, 15, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 16px;
+        color: var(--mist);
+        font-size: 16px;
+        line-height: 1.4;
+      }
+      body.show-notes .notes { display: block; }
+      body.show-notes .deck { height: min(640px, calc(100vh - 150px)); }
+
+      .wordmark {
+        font-family: var(--display);
+        font-weight: 800;
+        font-size: 92px;
+        letter-spacing: -0.05em;
+        line-height: 0.9;
+        background: linear-gradient(100deg, var(--fog) 0%, var(--sea) 48%, var(--gold) 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        width: fit-content;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="help">Arrows or space · N notes · F full screen</div>
+    <div class="stage">
+      <div class="deck" id="deck">
+        <section class="slide active">
+          <p class="kicker">Hackathon presentation</p>
+          <div class="wordmark">Aegis-Split</div>
+          <p class="tag">Money locked. Code proven. Paid.</p>
+          <p class="lede">Escrow for developers. The client funds a milestone. The merge is audited. The payout releases when the code matches the criteria.</p>
+          <p class="notes">Open on the line. Do not start with the stack. One breath, then the problem.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">01 · The problem</p>
+          <h2>The freelance deal is still a handshake.</h2>
+          <div class="grid two">
+            <article class="card">
+              <span class="role">Freelancer</span>
+              <strong>Unpaid hours</strong>
+              <p>Work ships. The client goes quiet. The invoice stays open.</p>
+            </article>
+            <article class="card">
+              <span class="role">Client</span>
+              <strong>Prepaid risk</strong>
+              <p>Money goes out first. The build never lands, or it lands broken.</p>
+            </article>
+          </div>
+          <p class="notes">Name both sides. Judges should feel the problem is symmetric, not a freelancer complaint.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">02 · What people use now</p>
+          <h2>Slow hands in the middle.</h2>
+          <ul class="clean">
+            <li><b>01</b><span>A person has to approve the work before anyone is paid.</span></li>
+            <li><b>02</b><span>Escrow sits in a bank queue, with fees and days of float.</span></li>
+            <li><b>03</b><span>Trust is a support ticket, not a check against the code.</span></li>
+          </ul>
+          <p class="notes">Do not attack a named competitor. The gap is manual release and no link to the diff.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">03 · The product</p>
+          <h2>Pay when the diff passes.</h2>
+          <p class="lede">Aegis-Split is a micro-escrow for developers, designers, and fast-moving tech clients. PayPal holds the milestone. An auditor reads the git diff against the acceptance criteria.</p>
+          <div class="grid two">
+            <article class="card">
+              <strong>Financial rails</strong>
+              <p>PayPal Orders lock the funds. PayPal Payouts release them.</p>
+            </article>
+            <article class="card">
+              <strong>Verification</strong>
+              <p>OpenAI or Anthropic when a key is set. Deterministic checks when it is not.</p>
+            </article>
+          </div>
+          <p class="notes">If asked about the model: default OpenAI model in the repo is gpt-4o-mini. The demo still passes with no key.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">04 · The story we demo</p>
+          <h2>Sarah hires Rohan.</h2>
+          <div class="grid two">
+            <article class="card">
+              <span class="role">Client</span>
+              <strong>Sarah Chen</strong>
+              <p>Funds the vault. Sets the acceptance criteria.</p>
+            </article>
+            <article class="card">
+              <span class="role">Freelancer</span>
+              <strong>Rohan Mehta</strong>
+              <p>Links the repo. Merges the work. Gets paid.</p>
+            </article>
+          </div>
+          <article class="card" style="margin-top: 16px">
+            <strong>Auth service MVP · $250</strong>
+            <p>Ship hero CTA. Login form. Session cookie. Lighthouse accessibility at least 90.</p>
+          </article>
+          <p class="notes">This is the seeded demo, not a fictional customer. Offer to click it after the architecture slide.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">05 · End to end</p>
+          <h2>Four steps.</h2>
+          <div class="flow">
+            <div class="node"><b>Fund</b><span>Sarah creates a PayPal order. Capture locks the milestone.</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>Merge</b><span>Rohan links owner/repo and the PR. A merged pull request carries the diff.</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>Audit</b><span>Each criterion comes back met or unmet, with evidence.</span></div>
+            <div class="arrow">→</div>
+            <div class="node"><b>Pay</b><span>A pass calls PayPal Payouts. The milestone becomes PAID.</span></div>
+          </div>
+          <p class="notes">A fail does not release money. Both people get FUNDED, AUDIT_PASSED or AUDIT_FAILED, and PAID.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">06 · Judge path</p>
+          <h2>Seven clicks.</h2>
+          <ol class="steps">
+            <li><b>01</b><span>Seed Sarah and Rohan.</span></li>
+            <li><b>02</b><span>Verify government ID and grant monitoring consent.</span></li>
+            <li><b>03</b><span>Create the project and the $250 milestone.</span></li>
+            <li><b>04</b><span>Fund the vault. Mock capture, or approve in the PayPal sandbox.</span></li>
+            <li><b>05</b><span>Link the GitHub repo and pull request.</span></li>
+            <li><b>06</b><span>Simulate the merge. Read the pass or fail.</span></li>
+            <li><b>07</b><span>Open Released. Status is PAID.</span></li>
+          </ol>
+          <p class="notes">Live command: npm start, then localhost:3000. Demo admin key is hackathon-demo-key. Say that only if they ask.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">07 · Architecture</p>
+          <h2>One API. Clear edges.</h2>
+          <div class="grid three">
+            <article class="card"><strong>App</strong><p>Express serves the demo UI and the API on the same origin.</p></article>
+            <article class="card"><strong>Data</strong><p>Postgres through Prisma. Users, projects, milestones, vault funds, merges, notifications.</p></article>
+            <article class="card"><strong>Money</strong><p>PayPal Orders to lock. PayPal Payouts to release. Webhook signature check on inbound events.</p></article>
+            <article class="card"><strong>Code</strong><p>GitHub webhook, HMAC checked. Merged pull request fetches the diff.</p></article>
+            <article class="card"><strong>Audit</strong><p>Criteria parsed into checks. Model when keyed. Heuristics otherwise.</p></article>
+            <article class="card"><strong>Ship</strong><p>Docker migrates on boot. Render, Railway, or Fly.</p></article>
+          </div>
+          <p class="notes">Auth on protected routes is an X-User-Id stub. Say that plainly. Sessions are not the demo.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">08 · What is in the repo</p>
+          <h2>Built, not sketched.</h2>
+          <table>
+            <thead><tr><th>Slice</th><th>Ships today</th></tr></thead>
+            <tbody>
+              <tr><td>KYC + consent</td><td>DigiLocker and Stripe Identity scaffolds. Consent log. Gate before create, fund, or merge.</td></tr>
+              <tr><td>Projects</td><td>Client and freelancer, milestones, amounts, acceptance criteria.</td></tr>
+              <tr><td>Escrow</td><td>Fund, capture, cancel, and payout. Mock mode for a local demo.</td></tr>
+              <tr><td>GitHub</td><td>Link a repo and PR. Real webhook or simulate-merge.</td></tr>
+              <tr><td>Notifications</td><td>Bell and toasts for funded, audit result, and paid. Idempotent.</td></tr>
+              <tr><td>Tests</td><td>KYC, validation, PayPal, GitHub signature, auditor, notifications.</td></tr>
+            </tbody>
+          </table>
+          <p class="notes">If a judge asks for Agora or a counselor desk: consent covers review of on-platform chats and call recordings. There is no separate counselor UI in this build.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">09 · Trust</p>
+          <h2>No money before identity.</h2>
+          <ul class="clean">
+            <li><b>ID</b><span>Government ID and monitoring consent are both required.</span></li>
+            <li><b>Record</b><span>Consent covers on-platform chats and call recordings for a dispute.</span></li>
+            <li><b>Fail closed</b><span>Unmet criteria do not release the vault.</span></li>
+            <li><b>Both sides</b><span>Client and freelancer get the same funding, audit, and payout alerts.</span></li>
+          </ul>
+          <p class="notes">Keep this concrete. The gate is middleware, not a policy slide.</p>
+        </section>
+
+        <section class="slide">
+          <p class="kicker">10 · Close</p>
+          <h2>A verified partnership.</h2>
+          <p class="lede">Freelance work stops being a bet. The money is locked, the diff is checked, and the payout follows the result.</p>
+          <p class="url">github.com/abhii176/AEGIS-SPILT</p>
+          <p class="fine">Demo: npm start → http://localhost:3000</p>
+          <p class="fine">Pitch video is in the repo at pitch/aegis-split-pitch.mp4</p>
+          <p class="notes">Stop. Thank them. Offer the live click-through. Do not add a new feature on the last slide.</p>
+        </section>
+      </div>
+    </div>
+    <div class="chrome"><span>Aegis-Split</span><span id="count">1 / 11</span></div>
+    <div class="bar"><span id="progress"></span></div>
+    <script>
+      const slides = [...document.querySelectorAll(".slide")];
+      const count = document.getElementById("count");
+      const progress = document.getElementById("progress");
+      let index = 0;
+
+      function show(next) {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+        count.textContent = `${index + 1} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        const note = slides[index].querySelector(".notes");
+        let dock = document.getElementById("note-dock");
+        if (!dock) {
+          dock = document.createElement("div");
+          dock.id = "note-dock";
+          dock.className = "notes";
+          document.body.appendChild(dock);
+        }
+        dock.textContent = note ? note.textContent : "";
+      }
+
+      document.addEventListener("keydown", (event) => {
+        if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+          event.preventDefault();
+          show(index + 1);
+        } else if (["ArrowLeft", "PageUp", "Backspace"].includes(event.key)) {
+          event.preventDefault();
+          show(index - 1);
+        } else if (event.key === "Home") {
+          show(0);
+        } else if (event.key === "End") {
+          show(slides.length - 1);
+        } else if (event.key.toLowerCase() === "n") {
+          document.body.classList.toggle("show-notes");
+        } else if (event.key.toLowerCase() === "f") {
+          document.documentElement.requestFullscreen?.();
+        }
+      });
+
+      document.getElementById("deck").addEventListener("click", (event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        show(event.clientX > rect.left + rect.width / 2 ? index + 1 : index - 1);
+      });
+
+      const initial = Number(String(location.hash || "").replace("#", ""));
+      show(Number.isFinite(initial) && initial > 0 ? initial - 1 : 0);
+    </script>
+  </body>
+</html>
