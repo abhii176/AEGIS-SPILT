@@ -31,7 +31,7 @@ function testCreateProjectValidation() {
     validateCreateProjectBody({
       title: 'App',
       freelancerId: 'u2',
-      earlyExitPenaltyPercent: 20,
+      earlyExitPenaltyPercent: 50,
       freelancerDepositAmountCents: 2500,
     }).ok,
     true

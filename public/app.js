@@ -350,7 +350,7 @@ async function createProjectAndMilestone(form) {
   const earlyExitPenaltyPercent =
     penaltyRaw != null && String(penaltyRaw).trim() !== ''
       ? Number(penaltyRaw)
-      : 20;
+      : 50;
   let freelancerDepositAmountCents;
   if (depositUsdRaw != null && String(depositUsdRaw).trim() !== '') {
     freelancerDepositAmountCents = Math.round(Number(depositUsdRaw) * 100);
@@ -401,7 +401,7 @@ function renderProjectMeta(project, milestoneTotalCents) {
     project.effectiveDepositAmountCents ??
     project.freelancerDepositAmountCents ??
     Math.floor(((milestoneTotalCents || 0) * 10) / 100);
-  $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 20);
+  $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 50);
   $('#meta-deposit').textContent = `$${(deposit / 100).toFixed(2)} (${project.depositStatus || 'PENDING'})`;
   $('#meta-status').textContent = project.status || '—';
 }

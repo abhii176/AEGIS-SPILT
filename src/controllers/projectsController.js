@@ -32,7 +32,7 @@ function enrichProject(project) {
   const paid = sumPaidOutCents(project.milestones || []);
   return {
     ...project,
-    earlyExitPenaltyPercent: project.earlyExitPenaltyPercent ?? 20,
+    earlyExitPenaltyPercent: project.earlyExitPenaltyPercent ?? 50,
     freelancerDepositAmountCents: project.freelancerDepositAmountCents,
     effectiveDepositAmountCents: depositAmountCents,
     depositStatus: project.depositStatus || 'PENDING',
@@ -106,7 +106,7 @@ async function createProject(req, res, next) {
         ? String(status).toUpperCase()
         : 'DRAFT';
 
-    let penalty = 20;
+    let penalty = 50;
     if (earlyExitPenaltyPercent != null && earlyExitPenaltyPercent !== '') {
       penalty = Number(earlyExitPenaltyPercent);
     }

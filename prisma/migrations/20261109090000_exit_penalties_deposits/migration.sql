@@ -17,7 +17,7 @@ ALTER TYPE "ProjectStatus" ADD VALUE 'ABANDONED_BY_FREELANCER';
 
 -- AlterTable projects
 ALTER TABLE "projects"
-  ADD COLUMN "early_exit_penalty_percent" INTEGER NOT NULL DEFAULT 20,
+  ADD COLUMN "early_exit_penalty_percent" INTEGER NOT NULL DEFAULT 50,
   ADD COLUMN "freelancer_deposit_amount_cents" INTEGER,
   ADD COLUMN "deposit_status" "DepositStatus" NOT NULL DEFAULT 'PENDING';
 

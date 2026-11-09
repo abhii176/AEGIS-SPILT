@@ -50,7 +50,7 @@ function remainingVaultCents({ capturedVaultCents = 0, paidOutCents = 0 } = {}) 
  */
 function computeClientOnesidedSplit({
   remainingVaultCents: remaining,
-  earlyExitPenaltyPercent = 20,
+  earlyExitPenaltyPercent = 50,
 } = {}) {
   const vault = Math.max(0, Number(remaining) || 0);
   let percent = Number(earlyExitPenaltyPercent);
@@ -72,7 +72,7 @@ function computeClientOnesidedSplit({
 function buildExitMoneyPlan({
   exitPath,
   remainingVaultCents: remaining,
-  earlyExitPenaltyPercent = 20,
+  earlyExitPenaltyPercent = 50,
   depositCents = 0,
   depositStatus = 'PENDING',
 } = {}) {

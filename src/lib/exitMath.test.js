@@ -44,7 +44,19 @@ function testRemainingVault() {
 }
 
 function testClientOnesidedRounding() {
-  // 20% of 10000 = 2000 exact
+  // Default 50% of 10000 = 5000 exact
+  assert.deepStrictEqual(
+    computeClientOnesidedSplit({
+      remainingVaultCents: 10000,
+    }),
+    {
+      remainingVaultCents: 10000,
+      penaltyCents: 5000,
+      clientRefundCents: 5000,
+      freelancerPayoutCents: 5000,
+    }
+  );
+  // Explicit 20% still supported
   assert.deepStrictEqual(
     computeClientOnesidedSplit({
       remainingVaultCents: 10000,
@@ -57,17 +69,17 @@ function testClientOnesidedRounding() {
       freelancerPayoutCents: 2000,
     }
   );
-  // Floor: 20% of 1001 = floor(200.2) = 200; client gets 801
+  // Floor: 50% of 1001 = floor(500.5) = 500; client gets 501
   assert.deepStrictEqual(
     computeClientOnesidedSplit({
       remainingVaultCents: 1001,
-      earlyExitPenaltyPercent: 20,
+      earlyExitPenaltyPercent: 50,
     }),
     {
       remainingVaultCents: 1001,
-      penaltyCents: 200,
-      clientRefundCents: 801,
-      freelancerPayoutCents: 200,
+      penaltyCents: 500,
+      clientRefundCents: 501,
+      freelancerPayoutCents: 500,
     }
   );
   // 0% → full refund to client
@@ -99,14 +111,13 @@ function testClientOnesidedExitPlan() {
   const plan = buildExitMoneyPlan({
     exitPath: 'CLIENT_ONESIDED',
     remainingVaultCents: 25000,
-    earlyExitPenaltyPercent: 20,
     depositCents: 2500,
     depositStatus: 'HELD',
   });
   assert.strictEqual(plan.projectStatus, 'CANCELLED_BY_CLIENT');
-  assert.strictEqual(plan.penaltyCents, 5000);
-  assert.strictEqual(plan.clientRefundCents, 20000);
-  assert.strictEqual(plan.freelancerPayoutCents, 5000);
+  assert.strictEqual(plan.penaltyCents, 12500);
+  assert.strictEqual(plan.clientRefundCents, 12500);
+  assert.strictEqual(plan.freelancerPayoutCents, 12500);
   assert.strictEqual(plan.depositDisposition, 'RETURNED');
 }
 
@@ -166,7 +177,7 @@ function testThreePathsMoneyConservation() {
     const plan = buildExitMoneyPlan({
       exitPath: path,
       remainingVaultCents: remaining,
-      earlyExitPenaltyPercent: 20,
+      earlyExitPenaltyPercent: 50,
       depositCents: deposit,
       depositStatus: 'HELD',
     });

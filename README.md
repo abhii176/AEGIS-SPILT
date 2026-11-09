@@ -153,7 +153,7 @@ Uses freelancer `paypalEmail` (or `email`) when `recipientEmail` is omitted. Set
   "title": "Landing page redesign",
   "description": "Optional",
   "freelancerId": "<user_cuid>",
-  "earlyExitPenaltyPercent": 20,
+  "earlyExitPenaltyPercent": 50,
   "freelancerDepositAmountCents": 2500
 }
 ```
@@ -167,7 +167,7 @@ Three paths (amounts in integer cents; percentages use **floor**):
 | Path | Status | Vault | Deposit |
 |------|--------|-------|---------|
 | **Mutual** (request → accept) | `CANCELLED_MUTUAL` | 100% unspent → client | Returned to freelancer |
-| **Client one-sided** | `CANCELLED_BY_CLIENT` | `floor(remaining × earlyExitPenaltyPercent / 100)` → freelancer; rest → client | Returned to freelancer |
+| **Client one-sided** | `CANCELLED_BY_CLIENT` | `floor(remaining × earlyExitPenaltyPercent / 100)` → freelancer (default **50%**); rest → client | Returned to freelancer |
 | **Freelancer walk-away** | `ABANDONED_BY_FREELANCER` | 100% unspent → client | Forfeited to client |
 
 - Freelancer funds a **security deposit** via PayPal Orders (same approve → capture as vault) before work; `depositStatus`: `PENDING` → `HELD` → `RETURNED` | `FORFEITED`.

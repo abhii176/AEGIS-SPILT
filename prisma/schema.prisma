@@ -152,7 +152,7 @@ model Project {
   /// Aggregate escrow lock state for the project vault
   fundedStatus ProjectFundedStatus @default(UNFUNDED) @map("funded_status")
   /// Early-exit penalty as percent of remaining vault (client one-sided cancel)
-  earlyExitPenaltyPercent Int @default(20) @map("early_exit_penalty_percent")
+  earlyExitPenaltyPercent Int @default(50) @map("early_exit_penalty_percent")
   /// Freelancer security deposit in cents (null → 10% of milestone total until locked)
   freelancerDepositAmountCents Int? @map("freelancer_deposit_amount_cents")
   /// High-level deposit lifecycle for the project

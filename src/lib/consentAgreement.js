@@ -29,7 +29,7 @@ Money is held in a client vault (PayPal Orders capture) plus an optional freelan
 
 **Mutual cancel.** Either party may request cancellation in-app; the other must accept. Then: refund **100%** of the unspent vault to the client; return the freelancer deposit. **No penalty.**
 
-**Client one-sided cancel.** If the client cancels without freelancer agreement and without a failed audit: deduct **earlyExitPenaltyPercent** (default **20%**) of the **remaining vault** and pay that amount to the freelancer via PayPal Payouts; refund the rest of the remaining vault to the client; return the freelancer deposit.
+**Client one-sided cancel.** If the client cancels without freelancer agreement and without a failed audit: deduct **earlyExitPenaltyPercent** (default **50%**) of the **remaining vault** and pay that amount to the freelancer via PayPal Payouts; refund the rest of the remaining vault to the client; return the freelancer deposit.
 
 **Freelancer walk-away.** If the freelancer abandons the engagement: forfeit the freelancer deposit to the client; refund **100%** of the client’s unspent vault. No additional vault penalty beyond deposit forfeiture.
 
