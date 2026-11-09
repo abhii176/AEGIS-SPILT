@@ -26,6 +26,8 @@ const state = {
   notifications: [],
   unreadCount: 0,
   seenNotifIds: new Set(JSON.parse(localStorage.getItem('aegis.seenNotifs') || '[]')),
+  chatMessages: [],
+  chatPollTimer: null,
 };
 
 function $(sel, root = document) {
@@ -88,6 +90,12 @@ function go(step) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (step === 'verify') refreshVerifyUi();
   if (step === 'paid') refreshPaid();
+  if (step === 'project') {
+    refreshChat();
+    startChatPolling();
+  } else {
+    stopChatPolling();
+  }
 }
 
 function renderRail() {
@@ -217,6 +225,7 @@ function selectPersona(key) {
   updateSessionChip();
   refreshVerifyUi();
   refreshNotifications();
+  refreshChat();
 }
 
 async function refreshMe() {
@@ -391,6 +400,8 @@ async function createProjectAndMilestone(form) {
   $('#btn-project-next').disabled = false;
   renderProjectMeta(project, amountCents);
   showLog('#log-project', { project, milestone });
+  await refreshChat();
+  startChatPolling();
 }
 
 function renderProjectMeta(project, milestoneTotalCents) {
@@ -404,6 +415,101 @@ function renderProjectMeta(project, milestoneTotalCents) {
   $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 50);
   $('#meta-deposit').textContent = `$${(deposit / 100).toFixed(2)} (${project.depositStatus || 'PENDING'})`;
   $('#meta-status').textContent = project.status || '—';
+}
+
+function stopChatPolling() {
+  if (state.chatPollTimer) {
+    clearInterval(state.chatPollTimer);
+    state.chatPollTimer = null;
+  }
+}
+
+function startChatPolling() {
+  stopChatPolling();
+  if (!state.projectId || !state.userId) return;
+  state.chatPollTimer = setInterval(() => {
+    refreshChat({ silent: true });
+  }, 4000);
+}
+
+function renderChat() {
+  const panel = $('#chat-panel');
+  const list = $('#chat-list');
+  if (!panel || !list) return;
+
+  if (!state.projectId) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+
+  if (!state.chatMessages.length) {
+    list.innerHTML =
+      '<li class="chat-empty">No messages yet — say hi to the other party</li>';
+    return;
+  }
+
+  list.innerHTML = state.chatMessages
+    .map((m) => {
+      const mine = m.senderUserId === state.userId;
+      const name =
+        m.sender?.name ||
+        m.sender?.email ||
+        (mine ? 'You' : 'Them');
+      const when = m.createdAt ? new Date(m.createdAt).toLocaleTimeString() : '';
+      return `<li class="chat-bubble ${mine ? 'mine' : 'theirs'}">
+        <div class="chat-meta"><span>${escapeHtml(name)}</span><span>${escapeHtml(when)}</span></div>
+        <div class="chat-body">${escapeHtml(m.body)}</div>
+      </li>`;
+    })
+    .join('');
+  list.scrollTop = list.scrollHeight;
+}
+
+async function refreshChat({ silent = false } = {}) {
+  const hint = $('#chat-hint');
+  if (!state.projectId || !state.userId) {
+    state.chatMessages = [];
+    renderChat();
+    return null;
+  }
+  try {
+    const data = await api(`/api/projects/${state.projectId}/messages`);
+    state.chatMessages = data.messages || [];
+    renderChat();
+    if (hint) {
+      hint.hidden = true;
+      hint.textContent = '';
+    }
+    return data;
+  } catch (err) {
+    if (!silent && hint) {
+      hint.hidden = false;
+      hint.textContent = err.message || 'Could not load chat';
+    }
+    renderChat();
+    return null;
+  }
+}
+
+async function sendChatMessage(form) {
+  if (!state.projectId) throw new Error('Create a project first');
+  if (!state.userId) throw new Error('Pick a user first');
+  const fd = new FormData(form);
+  const body = String(fd.get('body') || '').trim();
+  if (!body) throw new Error('Message required');
+
+  const data = await api(`/api/projects/${state.projectId}/messages`, {
+    method: 'POST',
+    body: { body },
+  });
+  form.reset();
+  if (data.message) {
+    state.chatMessages = [...state.chatMessages, data.message];
+    renderChat();
+  } else {
+    await refreshChat();
+  }
 }
 
 async function ensureActorReady(userId) {
@@ -765,6 +871,23 @@ function bindUi() {
     }
   });
 
+  $('#form-chat')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const hint = $('#chat-hint');
+    try {
+      await sendChatMessage(e.target);
+      if (hint) {
+        hint.hidden = true;
+        hint.textContent = '';
+      }
+    } catch (err) {
+      if (hint) {
+        hint.hidden = false;
+        hint.textContent = err.message || 'Could not send';
+      }
+    }
+  });
+
   $('#btn-fund').addEventListener('click', async () => {
     try {
       await fundVault();
@@ -947,6 +1070,11 @@ async function boot() {
   }
 
   await refreshNotifications();
+  if (state.projectId) {
+    await refreshChat();
+    const hash = (location.hash || '').slice(1);
+    if (hash === 'project') startChatPolling();
+  }
 }
 
 boot();
