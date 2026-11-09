@@ -1,0 +1,24 @@
+{
+  "name": "aegis-split-pitch",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Hackathon pitch video for Aegis-Split",
+  "scripts": {
+    "voice": "python3 scripts/voice.py",
+    "render": "remotion render src/index.ts Pitch out/aegis-split-pitch.mp4 --codec=h264",
+    "still": "remotion still src/index.ts Pitch out/poster.jpg --frame=90"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.441",
+    "@remotion/google-fonts": "4.0.441",
+    "@remotion/media": "4.0.441",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.441"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
+    "typescript": "5.8.2"
+  }
+}

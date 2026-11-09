@@ -1,0 +1,179 @@
+{
+  "fps": 30,
+  "voice": "en-US-AndrewNeural",
+  "rate": "+0%",
+  "duration": 123.476,
+  "cues": [
+    {
+      "id": "hook-economy",
+      "scene": "hook",
+      "visual": "economy",
+      "caption": "Every year, billions of dollars change hands in the freelance economy.",
+      "file": "hook-economy.mp3",
+      "start": 0.5,
+      "duration": 4.608
+    },
+    {
+      "id": "hook-broken",
+      "scene": "hook",
+      "visual": "broken",
+      "caption": "But the system is broken.",
+      "file": "hook-broken.mp3",
+      "start": 5.428,
+      "duration": 1.584
+    },
+    {
+      "id": "hook-sides",
+      "scene": "hook",
+      "visual": "sides",
+      "caption": "Freelancers live in fear of client ghosting and unpaid hours, while clients risk paying upfront for code that never arrives or breaks entirely.",
+      "file": "hook-sides.mp3",
+      "start": 7.652,
+      "duration": 9.36
+    },
+    {
+      "id": "hook-platforms",
+      "scene": "hook",
+      "visual": "platforms",
+      "caption": "Existing platforms rely on slow, manual human approvals and clunky escrow banks.",
+      "file": "hook-platforms.mp3",
+      "start": 17.332,
+      "duration": 6.024
+    },
+    {
+      "id": "hook-built",
+      "scene": "hook",
+      "visual": "built",
+      "caption": "That's why we built Aegis-Split.",
+      "file": "hook-built.mp3",
+      "start": 23.676,
+      "duration": 1.92
+    },
+    {
+      "id": "concept-platform",
+      "scene": "concept",
+      "visual": "platform",
+      "caption": "Aegis-Split is a revolutionary, AI-verified micro-escrow platform built specifically for developers, designers, and fast-moving tech clients.",
+      "file": "concept-platform.mp3",
+      "start": 26.696,
+      "duration": 9.504
+    },
+    {
+      "id": "concept-trust",
+      "scene": "concept",
+      "visual": "trust",
+      "caption": "We eliminate human bias and middleman delays by automating trust.",
+      "file": "concept-trust.mp3",
+      "start": 36.52,
+      "duration": 4.416
+    },
+    {
+      "id": "concept-how",
+      "scene": "concept",
+      "visual": "how",
+      "caption": "How? By combining secure financial rails with autonomous AI verification.",
+      "file": "concept-how.mp3",
+      "start": 41.256,
+      "duration": 4.944
+    },
+    {
+      "id": "flow-overview",
+      "scene": "workflow",
+      "visual": "overview",
+      "caption": "Here is how it works, end to end.",
+      "file": "flow-overview.mp3",
+      "start": 47.16,
+      "duration": 2.256
+    },
+    {
+      "id": "flow-vault",
+      "scene": "workflow",
+      "visual": "vault",
+      "caption": "Secure vaulting. The client funds the milestone via the PayPal REST API, locking the money safely in escrow.",
+      "file": "flow-vault.mp3",
+      "start": 49.936,
+      "duration": 7.272
+    },
+    {
+      "id": "flow-audit",
+      "scene": "workflow",
+      "visual": "audit",
+      "caption": "Automated AI auditing. Instead of waiting for a manual client click, when the freelancer merges their code into GitHub, our backend fetches the raw git diff.",
+      "file": "flow-audit.mp3",
+      "start": 57.528,
+      "duration": 9.84
+    },
+    {
+      "id": "flow-model",
+      "scene": "workflow",
+      "visual": "model",
+      "caption": "GPT-4o instantly audits the code against the milestone's acceptance criteria.",
+      "file": "flow-model.mp3",
+      "start": 67.688,
+      "duration": 5.232
+    },
+    {
+      "id": "flow-payout",
+      "scene": "workflow",
+      "visual": "payout",
+      "caption": "Instant payout. If the code passes verification, the PayPal Payouts API instantly releases the funds directly to the freelancer's account.",
+      "file": "flow-payout.mp3",
+      "start": 73.24,
+      "duration": 9.12
+    },
+    {
+      "id": "safety-more",
+      "scene": "safety",
+      "visual": "more",
+      "caption": "We didn't stop at automation.",
+      "file": "safety-more.mp3",
+      "start": 83.4,
+      "duration": 1.752
+    },
+    {
+      "id": "safety-gates",
+      "scene": "safety",
+      "visual": "gates",
+      "caption": "Aegis-Split enforces strict KYC verification, mandatory in-platform communication to prevent off-platform scams, and clear penalty-protected early-exit contracts.",
+      "file": "safety-gates.mp3",
+      "start": 85.472,
+      "duration": 11.232
+    },
+    {
+      "id": "safety-dispute",
+      "scene": "safety",
+      "visual": "dispute",
+      "caption": "If a dispute arises, our integrated Agora voice recordings and chat logs provide a transparent audit trail for our human review counselors to settle conflicts fairly.",
+      "file": "safety-dispute.mp3",
+      "start": 97.024,
+      "duration": 10.296
+    },
+    {
+      "id": "close-transform",
+      "scene": "close",
+      "visual": "transform",
+      "caption": "Aegis-Split transforms freelance collaboration from a game of trust into a mathematically secure, AI-verified partnership.",
+      "file": "close-transform.mp3",
+      "start": 108.3,
+      "duration": 8.184
+    },
+    {
+      "id": "close-cta",
+      "scene": "close",
+      "visual": "cta",
+      "caption": "Check out our open-source repository and live demo link below.",
+      "file": "close-cta.mp3",
+      "start": 116.804,
+      "duration": 3.936
+    },
+    {
+      "id": "close-thanks",
+      "scene": "close",
+      "visual": "thanks",
+      "caption": "Thank you.",
+      "file": "close-thanks.mp3",
+      "start": 121.06,
+      "duration": 0.816
+    }
+  ]
+}
