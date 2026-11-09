@@ -348,8 +348,8 @@ model ExitEvent {
   /// Deposit amount involved (if any)
   depositCents           Int                 @default(0) @map("deposit_cents")
   depositDisposition     DepositDisposition  @default(NONE) @map("deposit_disposition")
-  /// Optional PayPal / mock transfer ids
-  transferIds            Json?
+  /// Optional PayPal / mock transfer ids (column transfer_ids)
+  transferIds            Json?               @map("transfer_ids")
   /// Idempotency: one successful exit per project
   idempotencyKey         String              @unique @map("idempotency_key")
   createdAt              DateTime            @default(now()) @map("created_at")

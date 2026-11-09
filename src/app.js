@@ -11,6 +11,7 @@ const mergeRoutes = require('./routes/merge');
 const adminDemoRoutes = require('./routes/adminDemo');
 const webhooksRoutes = require('./routes/webhooks');
 const notificationsRoutes = require('./routes/notifications');
+const { logRequestError, publicErrorBody } = require('./lib/requestErrorLog');
 
 function createApp() {
   const app = express();
@@ -70,22 +71,13 @@ function createApp() {
   // Hackathon demo UI (static) — after API so /api/* stays JSON
   app.use(express.static(publicDir));
 
-  app.use((err, _req, res, _next) => {
+  app.use((err, req, res, _next) => {
     const status = err.status || err.statusCode || 500;
     if (process.env.NODE_ENV !== 'test') {
-      // eslint-disable-next-line no-console
-      console.error(err);
+      logRequestError(err, req);
     }
     const isProduction = process.env.NODE_ENV === 'production';
-    const message =
-      isProduction && status >= 500
-        ? 'Unexpected error'
-        : err.message || 'Unexpected error';
-    res.status(status).json({
-      error: err.code || 'internal_error',
-      message,
-      ...(!isProduction && err.details ? { details: err.details } : {}),
-    });
+    res.status(status).json(publicErrorBody(err, { isProduction, status }));
   });
 
   return app;
