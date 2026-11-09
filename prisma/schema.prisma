@@ -116,6 +116,7 @@ model User {
   cancellationRequests     CancellationRequest[]   @relation("CancellationRequester")
   cancellationResponses    CancellationRequest[]   @relation("CancellationResponder")
   exitEvents               ExitEvent[]
+  chatMessages             ChatMessage[]
 
   @@map("users")
 }
@@ -173,6 +174,7 @@ model Project {
   notifications        Notification[]
   cancellationRequests CancellationRequest[]
   exitEvents           ExitEvent[]
+  chatMessages         ChatMessage[]
 
   @@index([clientId])
   @@index([freelancerId])
@@ -180,6 +182,22 @@ model Project {
   @@index([fundedStatus])
   @@index([depositStatus])
   @@map("projects")
+}
+
+/// Plain-text project chat between client and freelancer (no calls/voice/video).
+model ChatMessage {
+  id           String   @id @default(cuid())
+  projectId    String   @map("project_id")
+  senderUserId String   @map("sender_user_id")
+  body         String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderUserId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt])
+  @@index([senderUserId])
+  @@map("chat_messages")
 }
 
 /// Milestone: task, acceptance rules, amount; optional GitHub fields for later merge/audit.

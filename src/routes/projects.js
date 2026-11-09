@@ -22,6 +22,7 @@ const {
   fundDeposit,
   captureDeposit,
 } = require('../controllers/exitController');
+const { listMessages, postMessage } = require('../controllers/chatController');
 
 const router = express.Router();
 
@@ -31,6 +32,13 @@ router.post('/', requireAuth, requireKycAndConsent, createProject);
 /** List / get require auth + membership (checked in controller) */
 router.get('/', requireAuth, listProjects);
 router.get('/:projectId', requireAuth, getProject);
+
+/**
+ * Project text chat (client ↔ freelancer). Allowed after cancel for disputes.
+ * No WebSockets — clients may poll GET.
+ */
+router.get('/:projectId/messages', requireAuth, listMessages);
+router.post('/:projectId/messages', requireAuth, postMessage);
 
 /**
  * Milestones under a project.

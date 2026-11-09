@@ -178,6 +178,21 @@
           <div class="project-meta" id="project-meta" hidden>
             <p><strong>Penalty:</strong> <span id="meta-penalty">—</span>% · <strong>Deposit:</strong> <span id="meta-deposit">—</span> · <strong>Status:</strong> <span id="meta-status">—</span></p>
           </div>
+          <div class="chat-panel" id="chat-panel" hidden>
+            <div class="chat-head">
+              <h3>Project chat</h3>
+              <p class="chat-sub">Text only · client ↔ freelancer · polls every 4s</p>
+            </div>
+            <ul class="chat-list" id="chat-list" aria-live="polite">
+              <li class="chat-empty">Create a project to start chatting</li>
+            </ul>
+            <form class="chat-compose" id="form-chat">
+              <label class="sr-only" for="chat-input">Message</label>
+              <input id="chat-input" name="body" maxlength="2000" placeholder="Message the other party…" required autocomplete="off" />
+              <button type="submit" class="btn primary" id="btn-chat-send">Send</button>
+            </form>
+            <p class="chat-hint" id="chat-hint" hidden></p>
+          </div>
           <pre class="log" id="log-project" hidden></pre>
         </div>
       </section>

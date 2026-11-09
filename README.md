@@ -13,6 +13,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
 | **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID / exit+deposit alerts (idempotent); demo bell + toasts |
 | **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
+| **Project chat** | Plain-text client ↔ freelancer messages per project (DB-backed; polling; allowed after cancel) |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
 
 ## Deploy (public HTTPS for judges)
@@ -84,6 +85,8 @@ POST /api/projects/:projectId/exit/client   # client one-sided cancel + penalty
 POST /api/projects/:projectId/exit/abandon  # freelancer walk-away + deposit forfeit
 POST /api/projects/:projectId/deposit/fund  # freelancer security deposit (Orders)
 POST /api/projects/:projectId/deposit/capture
+GET  /api/projects/:projectId/messages      # list chat (client/freelancer only)
+POST /api/projects/:projectId/messages      # { body } — non-empty, max 2000 chars; OK after cancel
 
 POST /api/vault/fund                       # gated — create PayPal order + approve link
 POST /api/vault/capture                    # gated — capture after buyer approval
@@ -174,6 +177,18 @@ Three paths (amounts in integer cents; percentages use **floor**):
 - On successful completion (all milestones paid after audit PASS), held deposit is returned via PayPal Payouts (or mock).
 - After cancel/abandon, funding, GitHub linking, and merges are blocked.
 - Exit handlers are **idempotent** (`ExitEvent.idempotencyKey = exit:<projectId>`).
+
+### Project chat (text only)
+
+```json
+POST /api/projects/:projectId/messages
+{ "body": "Can you clarify the login acceptance criteria?" }
+```
+
+- Only the project’s **client** or **freelancer** may `GET`/`POST` messages (`403` otherwise).
+- Body must be non-empty, max **2000** characters.
+- Chat remains available after cancel/abandon for dispute context (unlike fund/GitHub/merge).
+- Demo UI: chat panel on the Project step; polls every few seconds (no WebSockets / calls).
 - UI **Cancel / Exit** shows money destinations **before** confirm.
 - Consent is the full **User Consent Agreement v2.0.0** (identity, platform-only communication, exit/penalty rules, conduct, disputes); users tick agree with **name + date**.
 
