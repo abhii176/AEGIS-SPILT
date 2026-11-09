@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aegis-Split thumbnail set</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Figtree:wght@500;600;700&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      html, body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #04110f;
+        color: #d8efe8;
+        font-family: "Figtree", "Avenir Next", sans-serif;
+      }
+      .frame {
+        display: none;
+        width: 1280px;
+        height: 720px;
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(780px 460px at 8% -10%, rgba(23, 163, 138, 0.48), transparent 60%),
+          radial-gradient(640px 420px at 100% 110%, rgba(232, 184, 74, 0.26), transparent 55%),
+          linear-gradient(165deg, #04110f 0%, #0a2420 52%, #071816 100%);
+      }
+      .frame.active { display: block; }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(216, 239, 232, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(216, 239, 232, 0.05) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(ellipse at 35% 40%, black 15%, transparent 78%);
+      }
+      .pad { position: relative; z-index: 1; padding: 72px 80px; height: 720px; box-sizing: border-box; }
+      .kicker {
+        margin: 0;
+        color: #e8b84a;
+        letter-spacing: 0.2em;
+        font-size: 20px;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 16px 0 0;
+        font-family: "Syne", "Avenir Next", sans-serif;
+        font-weight: 800;
+        font-size: 78px;
+        letter-spacing: -0.045em;
+        line-height: 0.95;
+      }
+      .sub { margin: 18px 0 0; font-size: 28px; line-height: 1.35; color: #a8d5c8; max-width: 760px; }
+      .row { display: flex; gap: 22px; margin-top: 36px; }
+      .card {
+        flex: 1;
+        background: rgba(8, 28, 25, 0.72);
+        border: 1px solid rgba(216, 239, 232, 0.16);
+        border-radius: 24px;
+        padding: 26px 28px;
+      }
+      .role { margin: 0; color: #e8b84a; letter-spacing: 0.16em; font-size: 16px; font-weight: 700; }
+      .card h2 {
+        margin: 10px 0 8px;
+        font-family: "Syne", sans-serif;
+        font-size: 40px;
+        letter-spacing: -0.04em;
+      }
+      .card p { margin: 0; font-size: 24px; line-height: 1.35; color: #d8efe8; }
+      .steps { display: flex; gap: 16px; margin-top: 40px; }
+      .step {
+        flex: 1;
+        min-height: 250px;
+        background: rgba(8, 28, 25, 0.72);
+        border: 1px solid rgba(216, 239, 232, 0.16);
+        border-radius: 24px;
+        padding: 24px 22px;
+      }
+      .n { color: #e8b84a; font-family: "Syne", sans-serif; font-size: 28px; font-weight: 800; }
+      .step h2 { margin: 14px 0 10px; font-family: "Syne", sans-serif; font-size: 36px; letter-spacing: -0.04em; }
+      .step p { margin: 0; font-size: 22px; line-height: 1.35; color: #a8d5c8; }
+      .checks { margin-top: 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; max-width: 760px; }
+      .check {
+        background: rgba(8, 28, 25, 0.72);
+        border: 1px solid rgba(216, 239, 232, 0.16);
+        border-radius: 16px;
+        padding: 16px 18px;
+        font-size: 24px;
+        font-weight: 650;
+      }
+      .check span { color: #8ee0bf; margin-right: 10px; }
+      .pass {
+        position: absolute;
+        right: 80px;
+        top: 250px;
+        width: 280px;
+        border-radius: 28px;
+        border: 1px solid rgba(31, 157, 106, 0.7);
+        background: rgba(31, 157, 106, 0.16);
+        padding: 28px;
+      }
+      .pass .label { margin: 0; letter-spacing: 0.16em; color: #8ee0bf; font-weight: 700; font-size: 16px; }
+      .pass strong {
+        display: block;
+        margin-top: 8px;
+        font-family: "Syne", sans-serif;
+        font-size: 64px;
+        letter-spacing: -0.05em;
+      }
+      .pass .status { margin: 8px 0 0; font-family: "Syne", sans-serif; font-size: 42px; color: #e8b84a; font-weight: 800; }
+      .url {
+        margin-top: 36px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 34px;
+        color: #e8b84a;
+      }
+      .fine { margin-top: 16px; font-size: 28px; color: #a8d5c8; }
+    </style>
+  </head>
+  <body>
+    <section class="frame" data-slide="problem">
+      <div class="grid"></div>
+      <div class="pad">
+        <p class="kicker">THE PROBLEM</p>
+        <h1>The deal is still<br />a handshake.</h1>
+        <div class="row">
+          <article class="card">
+            <p class="role">FREELANCER</p>
+            <h2>Unpaid hours</h2>
+            <p>The work ships. The client goes quiet. The invoice stays open.</p>
+          </article>
+          <article class="card">
+            <p class="role">CLIENT</p>
+            <h2>Prepaid risk</h2>
+            <p>The money goes out first. The code never lands, or it lands broken.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame" data-slide="product">
+      <div class="grid"></div>
+      <div class="pad">
+        <p class="kicker">THE PRODUCT</p>
+        <h1>Pay when the<br />diff passes.</h1>
+        <div class="row">
+          <article class="card">
+            <p class="role">MONEY</p>
+            <h2>PayPal vault</h2>
+            <p>Orders lock the milestone. Payouts release it only after a pass.</p>
+          </article>
+          <article class="card">
+            <p class="role">CODE</p>
+            <h2>AI audit</h2>
+            <p>The git diff is checked against the milestone’s acceptance criteria.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame" data-slide="how">
+      <div class="grid"></div>
+      <div class="pad">
+        <p class="kicker">HOW IT WORKS</p>
+        <h1>Four steps. One release.</h1>
+        <div class="steps">
+          <article class="step"><div class="n">01</div><h2>Fund</h2><p>The client locks $1,000 in escrow.</p></article>
+          <article class="step"><div class="n">02</div><h2>Merge</h2><p>The freelancer merges the pull request.</p></article>
+          <article class="step"><div class="n">03</div><h2>Audit</h2><p>Each criterion comes back met or unmet.</p></article>
+          <article class="step"><div class="n">04</div><h2>Pay</h2><p>A pass sends the PayPal payout.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="frame" data-slide="demo">
+      <div class="grid"></div>
+      <div class="pad">
+        <p class="kicker">THE DEMO</p>
+        <h1>Sarah funds.<br />Rohan ships.</h1>
+        <div class="checks">
+          <div class="check"><span>✓</span>Hero CTA</div>
+          <div class="check"><span>✓</span>Login form</div>
+          <div class="check"><span>✓</span>Session cookie</div>
+          <div class="check"><span>✓</span>A11y ≥ 90</div>
+        </div>
+        <aside class="pass">
+          <p class="label">MILESTONE</p>
+          <strong>$1,000</strong>
+          <p class="status">PAID</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="frame" data-slide="repo">
+      <div class="grid"></div>
+      <div class="pad">
+        <p class="kicker">OPEN SOURCE</p>
+        <h1>Aegis-Split</h1>
+        <p class="sub">Money locked. Code proven. Paid.</p>
+        <p class="url">github.com/abhii176/AEGIS-SPILT</p>
+        <p class="fine">Demo: npm start → localhost:3000</p>
+      </div>
+    </section>
+    <script>
+      const want = (location.hash || "#problem").slice(1);
+      const frames = [...document.querySelectorAll(".frame")];
+      const hit = frames.find((frame) => frame.dataset.slide === want) || frames[0];
+      hit.classList.add("active");
+    </script>
+  </body>
+</html>
