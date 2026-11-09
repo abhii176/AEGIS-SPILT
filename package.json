@@ -11,7 +11,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "test": "node src/services/kyc/index.test.js && node src/lib/projectValidation.test.js && node src/lib/requestValidation.test.js && node src/services/paypal/paypal.test.js && node src/services/paypal/webhookSignature.test.js && node src/services/github/github.test.js && node src/services/aiAuditor/aiAuditor.test.js && node src/services/notifications/notifications.test.js"
+    "test": "node src/services/kyc/index.test.js && node src/lib/projectValidation.test.js && node src/lib/requestValidation.test.js && node src/lib/exitMath.test.js && node src/services/paypal/paypal.test.js && node src/services/paypal/webhookSignature.test.js && node src/services/github/github.test.js && node src/services/aiAuditor/aiAuditor.test.js && node src/services/notifications/notifications.test.js"
   },
   "engines": {
     "node": ">=18"

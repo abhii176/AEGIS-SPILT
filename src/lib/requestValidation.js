@@ -139,7 +139,27 @@ function validateConsentBody(body = {}) {
     if (!consentVersion) errors.push('invalid_consent_version');
   }
 
-  return { ok: errors.length === 0, errors, accepted, consentVersion };
+  // Name + date required for User Consent Agreement v2+
+  let agreedName = asNonEmptyString(body.agreedName || body.agreed_name || body.name, 200);
+  if (!agreedName) errors.push('agreed_name_required');
+
+  let agreedDate = null;
+  const dateRaw = body.agreedDate || body.agreed_date || body.date || null;
+  if (dateRaw != null && dateRaw !== '') {
+    agreedDate = asNonEmptyString(String(dateRaw), 32);
+    if (!agreedDate) errors.push('invalid_agreed_date');
+  } else {
+    agreedDate = new Date().toISOString().slice(0, 10);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    accepted,
+    consentVersion,
+    agreedName,
+    agreedDate,
+  };
 }
 
 function validateMergeBody(body = {}) {

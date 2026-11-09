@@ -1,14 +1,47 @@
 const { prisma } = require('../lib/prisma');
 const { validateCreateProjectBody } = require('../lib/projectValidation');
+const {
+  resolveDepositAmountCents,
+  sumMilestoneTotalCents,
+  remainingVaultCents,
+  sumCapturedVaultCents,
+  sumPaidOutCents,
+} = require('../lib/exitMath');
 
 const PROJECT_INCLUDE = {
   milestones: { orderBy: { sequence: 'asc' } },
-  client: { select: { id: true, email: true, name: true, role: true } },
-  freelancer: { select: { id: true, email: true, name: true, role: true } },
+  client: { select: { id: true, email: true, name: true, role: true, paypalEmail: true } },
+  freelancer: { select: { id: true, email: true, name: true, role: true, paypalEmail: true } },
+  cancellationRequests: { orderBy: { createdAt: 'desc' }, take: 5 },
+  exitEvents: { orderBy: { createdAt: 'desc' }, take: 3 },
+  freelancerDeposits: { orderBy: { createdAt: 'desc' }, take: 3 },
 };
 
 function isProjectParticipant(userId, project) {
   return project.clientId === userId || project.freelancerId === userId;
+}
+
+function enrichProject(project) {
+  if (!project) return project;
+  const milestoneTotalCents = sumMilestoneTotalCents(project.milestones || []);
+  const depositAmountCents = resolveDepositAmountCents({
+    freelancerDepositAmountCents: project.freelancerDepositAmountCents,
+    milestoneTotalCents,
+  });
+  const captured = sumCapturedVaultCents(project.vaultFunds || []);
+  const paid = sumPaidOutCents(project.milestones || []);
+  return {
+    ...project,
+    earlyExitPenaltyPercent: project.earlyExitPenaltyPercent ?? 20,
+    freelancerDepositAmountCents: project.freelancerDepositAmountCents,
+    effectiveDepositAmountCents: depositAmountCents,
+    depositStatus: project.depositStatus || 'PENDING',
+    milestoneTotalCents,
+    remainingVaultCents: remainingVaultCents({
+      capturedVaultCents: captured,
+      paidOutCents: paid,
+    }),
+  };
 }
 
 /**
@@ -24,12 +57,16 @@ async function createProject(req, res, next) {
       freelancerId,
       clientId: bodyClientId,
       status,
+      earlyExitPenaltyPercent,
+      freelancerDepositAmountCents,
     } = req.body || {};
 
     const validation = validateCreateProjectBody({
       title,
       freelancerId,
       clientId: bodyClientId,
+      earlyExitPenaltyPercent,
+      freelancerDepositAmountCents,
     });
     if (!validation.ok) {
       return res.status(400).json({ error: validation.errors[0] });
@@ -69,6 +106,16 @@ async function createProject(req, res, next) {
         ? String(status).toUpperCase()
         : 'DRAFT';
 
+    let penalty = 20;
+    if (earlyExitPenaltyPercent != null && earlyExitPenaltyPercent !== '') {
+      penalty = Number(earlyExitPenaltyPercent);
+    }
+
+    let depositCents = null;
+    if (freelancerDepositAmountCents != null && freelancerDepositAmountCents !== '') {
+      depositCents = Number(freelancerDepositAmountCents);
+    }
+
     const project = await prisma.project.create({
       data: {
         clientId,
@@ -76,11 +123,14 @@ async function createProject(req, res, next) {
         title: title.trim(),
         description: description ? String(description) : null,
         status: projectStatus,
+        earlyExitPenaltyPercent: penalty,
+        freelancerDepositAmountCents: depositCents,
+        depositStatus: 'PENDING',
       },
       include: PROJECT_INCLUDE,
     });
 
-    return res.status(201).json({ project });
+    return res.status(201).json({ project: enrichProject(project) });
   } catch (err) {
     return next(err);
   }
@@ -100,7 +150,7 @@ async function listProjects(req, res, next) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.status(200).json({ projects });
+    return res.status(200).json({ projects: projects.map(enrichProject) });
   } catch (err) {
     return next(err);
   }
@@ -113,7 +163,10 @@ async function getProject(req, res, next) {
   try {
     const project = await prisma.project.findUnique({
       where: { id: req.params.projectId },
-      include: PROJECT_INCLUDE,
+      include: {
+        ...PROJECT_INCLUDE,
+        vaultFunds: true,
+      },
     });
 
     if (!project) {
@@ -123,7 +176,7 @@ async function getProject(req, res, next) {
       return res.status(403).json({ error: 'forbidden' });
     }
 
-    return res.status(200).json({ project });
+    return res.status(200).json({ project: enrichProject(project) });
   } catch (err) {
     return next(err);
   }
@@ -135,4 +188,5 @@ module.exports = {
   getProject,
   isProjectParticipant,
   PROJECT_INCLUDE,
+  enrichProject,
 };

@@ -62,7 +62,17 @@ function testVerifyIdentity() {
 
 function testConsent() {
   assert.ok(validateConsentBody({}).errors.includes('acceptance_required'));
-  assert.strictEqual(validateConsentBody({ accepted: true }).ok, true);
+  assert.ok(
+    validateConsentBody({ accepted: true }).errors.includes('agreed_name_required')
+  );
+  const ok = validateConsentBody({
+    accepted: true,
+    agreedName: 'Sarah Chen',
+    agreedDate: '2026-11-09',
+  });
+  assert.strictEqual(ok.ok, true);
+  assert.strictEqual(ok.agreedName, 'Sarah Chen');
+  assert.strictEqual(ok.agreedDate, '2026-11-09');
 }
 
 function testMerge() {

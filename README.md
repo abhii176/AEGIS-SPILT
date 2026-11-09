@@ -11,7 +11,8 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
 | **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
 | **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
-| **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID alerts (idempotent); demo bell + toasts |
+| **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID / exit+deposit alerts (idempotent); demo bell + toasts |
+| **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
 
 ## Deploy (public HTTPS for judges)
@@ -66,20 +67,28 @@ GET  /api/auth/me                      # stub user for X-User-Id
 POST /api/auth/verify-identity
 GET  /api/auth/verify-identity/callback/digilocker
 GET  /api/auth/verify-identity/callback/stripe
-POST /api/consent/monitoring
+GET  /api/consent/agreement                # User Consent Agreement markdown (v2.0.0)
+POST /api/consent/monitoring               # { accepted, agreedName, agreedDate } → ConsentLogs
 
-POST /api/projects                          # gated (KYC + consent)
+POST /api/projects                          # gated (KYC + consent); optional earlyExitPenaltyPercent, freelancerDepositAmountCents
 GET  /api/projects
-GET  /api/projects/:projectId
+GET  /api/projects/:projectId               # includes penalty %, deposit amount/status, remaining vault
 POST /api/projects/:projectId/milestones    # gated
 GET  /api/projects/:projectId/milestones
 POST /api/projects/:projectId/milestones/:milestoneId/github   # gated — link repo/PR
 POST /api/projects/:projectId/milestones/:milestoneId/release  # gated — PayPal Payouts
+GET  /api/projects/:projectId/exit/preview?path=MUTUAL|CLIENT_ONESIDED|FREELANCER_WALKAWAY
+POST /api/projects/:projectId/cancel/request
+POST /api/projects/:projectId/cancel/accept
+POST /api/projects/:projectId/exit/client   # client one-sided cancel + penalty
+POST /api/projects/:projectId/exit/abandon  # freelancer walk-away + deposit forfeit
+POST /api/projects/:projectId/deposit/fund  # freelancer security deposit (Orders)
+POST /api/projects/:projectId/deposit/capture
 
 POST /api/vault/fund                       # gated — create PayPal order + approve link
 POST /api/vault/capture                    # gated — capture after buyer approval
-GET  /api/vault/paypal/return?token=...    # PayPal return — capture if APPROVED
-GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund CANCELLED
+GET  /api/vault/paypal/return?token=...    # PayPal return — vault or deposit capture if APPROVED
+GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund/deposit CANCELLED
 GET  /api/notifications                    # list for X-User-Id (optional ?unread=true)
 POST /api/notifications/mark-read          # { notificationIds } or { all: true }
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
@@ -143,9 +152,32 @@ Uses freelancer `paypalEmail` (or `email`) when `recipientEmail` is omitted. Set
 {
   "title": "Landing page redesign",
   "description": "Optional",
-  "freelancerId": "<user_cuid>"
+  "freelancerId": "<user_cuid>",
+  "earlyExitPenaltyPercent": 20,
+  "freelancerDepositAmountCents": 2500
 }
 ```
+
+Omit `freelancerDepositAmountCents` to default to **10% of milestone total** (floor cents) when the deposit is funded / shown.
+
+### Exit & penalties
+
+Three paths (amounts in integer cents; percentages use **floor**):
+
+| Path | Status | Vault | Deposit |
+|------|--------|-------|---------|
+| **Mutual** (request → accept) | `CANCELLED_MUTUAL` | 100% unspent → client | Returned to freelancer |
+| **Client one-sided** | `CANCELLED_BY_CLIENT` | `floor(remaining × earlyExitPenaltyPercent / 100)` → freelancer; rest → client | Returned to freelancer |
+| **Freelancer walk-away** | `ABANDONED_BY_FREELANCER` | 100% unspent → client | Forfeited to client |
+
+- Freelancer funds a **security deposit** via PayPal Orders (same approve → capture as vault) before work; `depositStatus`: `PENDING` → `HELD` → `RETURNED` | `FORFEITED`.
+- On successful completion (all milestones paid after audit PASS), held deposit is returned via PayPal Payouts (or mock).
+- After cancel/abandon, funding, GitHub linking, and merges are blocked.
+- Exit handlers are **idempotent** (`ExitEvent.idempotencyKey = exit:<projectId>`).
+- UI **Cancel / Exit** shows money destinations **before** confirm.
+- Consent is the full **User Consent Agreement v2.0.0** (identity, platform-only communication, exit/penalty rules, conduct, disputes); users tick agree with **name + date**.
+
+**PayPal sandbox / mock notes:** Mock mode simulates refunds and payouts without calling PayPal. Live sandbox **capture refunds** (`POST /v2/payments/captures/{id}/refund`) only work while PayPal still allows refunding that capture; partial refunds across multiple vault captures are applied oldest-first. Payouts for penalties / deposit return / forfeit use the Payouts API (or mock batch ids). No extra env vars beyond existing PayPal credentials / `PAYPAL_MOCK`.
 
 ```json
 {

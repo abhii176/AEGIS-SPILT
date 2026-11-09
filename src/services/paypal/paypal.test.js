@@ -75,6 +75,14 @@ async function testMockOrdersAndPayouts() {
   assert.strictEqual(captured.status, 'COMPLETED');
   assert.ok(captured.captureId.startsWith('MOCK-CAPTURE-'));
 
+  const refund = await paypal.refundCapture({
+    captureId: captured.captureId,
+    amountCents: 1000,
+    currency: 'USD',
+  });
+  assert.ok(refund.refundId.startsWith('MOCK-REFUND-'));
+  assert.strictEqual(refund.status, 'COMPLETED');
+
   const payout = await paypal.createPayout({
     amountCents: 25000,
     currency: 'USD',

@@ -150,10 +150,60 @@ function createOrdersService(client = createPaypalClient()) {
     };
   }
 
+  /**
+   * Refund a prior capture (partial or full). Used to return unspent vault to the client.
+   * Sandbox note: only captures that PayPal still allows refunding will succeed;
+   * mock mode always succeeds.
+   */
+  async function refundCapture({
+    captureId,
+    amountCents = null,
+    currency = 'USD',
+    note = 'Aegis-Split vault refund',
+  }) {
+    if (!captureId) {
+      const err = new Error('captureId is required');
+      err.status = 400;
+      err.code = 'invalid_capture_id';
+      throw err;
+    }
+
+    const currencyCode = String(currency || 'USD').toUpperCase();
+    let body = { note_to_payer: String(note).slice(0, 255) };
+    if (amountCents != null) {
+      body.amount = {
+        value: centsToAmountValue(amountCents),
+        currency_code: currencyCode,
+      };
+    }
+
+    if (client.isMock()) {
+      return {
+        refundId: `MOCK-REFUND-${captureId}-${amountCents ?? 'full'}`,
+        status: 'COMPLETED',
+        amountCents: amountCents,
+        raw: { mock: true, captureId, ...body },
+      };
+    }
+
+    const refund = await client.request('POST', `/v2/payments/captures/${captureId}/refund`, {
+      body,
+      idempotencyKey: `refund-${captureId}-${amountCents ?? 'full'}`,
+    });
+
+    return {
+      refundId: refund.id || null,
+      status: refund.status || null,
+      amountCents,
+      raw: refund,
+    };
+  }
+
   return {
     createOrder,
     getOrder,
     captureOrder,
+    refundCapture,
     centsToAmountValue,
     pickApprovalUrl,
     pickCaptureId,

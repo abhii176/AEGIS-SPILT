@@ -5,7 +5,19 @@ const TYPES = Object.freeze({
   AUDIT_PASSED: 'AUDIT_PASSED',
   AUDIT_FAILED: 'AUDIT_FAILED',
   PAID: 'PAID',
+  CANCEL_REQUESTED: 'CANCEL_REQUESTED',
+  CANCEL_ACCEPTED: 'CANCEL_ACCEPTED',
+  PROJECT_EXITED: 'PROJECT_EXITED',
+  PENALTY_PAID: 'PENALTY_PAID',
+  DEPOSIT_HELD: 'DEPOSIT_HELD',
+  DEPOSIT_RETURNED: 'DEPOSIT_RETURNED',
+  DEPOSIT_FORFEITED: 'DEPOSIT_FORFEITED',
 });
+
+function formatUsd(cents) {
+  if (cents == null) return '';
+  return `$${(Number(cents) / 100).toFixed(2)}`;
+}
 
 /**
  * Persist in-app notifications for the active user (X-User-Id).
@@ -199,6 +211,79 @@ function createNotificationService({ db = prisma } = {}) {
     });
   }
 
+  async function notifyCancelRequested({ project, cancellationRequest, requestedByUserId }) {
+    const who =
+      requestedByUserId === project.clientId ? 'Client' : 'Freelancer';
+    return notifyProjectParties({
+      project,
+      type: TYPES.CANCEL_REQUESTED,
+      message: `${who} requested mutual cancellation of “${project.title}”.`,
+      dedupePrefix: `CANCEL_REQUESTED:${cancellationRequest.id}`,
+    });
+  }
+
+  async function notifyCancelAccepted({ project, exitEvent }) {
+    return notifyProjectParties({
+      project,
+      type: TYPES.CANCEL_ACCEPTED,
+      message: `Mutual cancellation accepted for “${project.title}”. Vault refunded; deposit returned.`,
+      dedupePrefix: `CANCEL_ACCEPTED:${exitEvent?.id || project.id}`,
+    });
+  }
+
+  async function notifyProjectExited({ project, exitPath, plan, exitEvent }) {
+    let message = `Project “${project.title}” exited (${exitPath}).`;
+    if (exitPath === 'CLIENT_ONESIDED') {
+      message = `Client cancelled “${project.title}”. Penalty ${formatUsd(plan.penaltyCents)} to freelancer; ${formatUsd(plan.clientRefundCents)} refunded to client.`;
+    } else if (exitPath === 'FREELANCER_WALKAWAY') {
+      message = `Freelancer abandoned “${project.title}”. Deposit forfeited; vault refunded to client.`;
+    } else if (exitPath === 'MUTUAL') {
+      message = `“${project.title}” cancelled by mutual agreement.`;
+    }
+    return notifyProjectParties({
+      project,
+      type: TYPES.PROJECT_EXITED,
+      message,
+      dedupePrefix: `PROJECT_EXITED:${exitEvent?.id || project.id}`,
+    });
+  }
+
+  async function notifyPenaltyPaid({ project, amountCents, exitEvent }) {
+    return notifyProjectParties({
+      project,
+      type: TYPES.PENALTY_PAID,
+      message: `Early-exit penalty paid: ${formatUsd(amountCents)} to freelancer on “${project.title}”.`,
+      dedupePrefix: `PENALTY_PAID:${exitEvent?.id || project.id}`,
+    });
+  }
+
+  async function notifyDepositHeld({ project, amountCents }) {
+    return notifyProjectParties({
+      project,
+      type: TYPES.DEPOSIT_HELD,
+      message: `Freelancer security deposit held: ${formatUsd(amountCents)} on “${project.title}”.`,
+      dedupePrefix: `DEPOSIT_HELD:${project.id}`,
+    });
+  }
+
+  async function notifyDepositReturned({ project, amountCents, exitEvent }) {
+    return notifyProjectParties({
+      project,
+      type: TYPES.DEPOSIT_RETURNED,
+      message: `Security deposit returned to freelancer: ${formatUsd(amountCents)} on “${project.title}”.`,
+      dedupePrefix: `DEPOSIT_RETURNED:${exitEvent?.id || project.id}`,
+    });
+  }
+
+  async function notifyDepositForfeited({ project, amountCents, exitEvent }) {
+    return notifyProjectParties({
+      project,
+      type: TYPES.DEPOSIT_FORFEITED,
+      message: `Security deposit forfeited to client: ${formatUsd(amountCents)} on “${project.title}”.`,
+      dedupePrefix: `DEPOSIT_FORFEITED:${exitEvent?.id || project.id}`,
+    });
+  }
+
   return {
     TYPES,
     createNotification,
@@ -208,6 +293,13 @@ function createNotificationService({ db = prisma } = {}) {
     notifyFunded,
     notifyAudit,
     notifyPaid,
+    notifyCancelRequested,
+    notifyCancelAccepted,
+    notifyProjectExited,
+    notifyPenaltyPaid,
+    notifyDepositHeld,
+    notifyDepositReturned,
+    notifyDepositForfeited,
   };
 }
 
@@ -223,4 +315,11 @@ module.exports = {
   notifyFunded: defaultService.notifyFunded,
   notifyAudit: defaultService.notifyAudit,
   notifyPaid: defaultService.notifyPaid,
+  notifyCancelRequested: defaultService.notifyCancelRequested,
+  notifyCancelAccepted: defaultService.notifyCancelAccepted,
+  notifyProjectExited: defaultService.notifyProjectExited,
+  notifyPenaltyPaid: defaultService.notifyPenaltyPaid,
+  notifyDepositHeld: defaultService.notifyDepositHeld,
+  notifyDepositReturned: defaultService.notifyDepositReturned,
+  notifyDepositForfeited: defaultService.notifyDepositForfeited,
 };

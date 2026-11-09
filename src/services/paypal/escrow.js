@@ -2,6 +2,7 @@ const { prisma } = require('../../lib/prisma');
 const { env } = require('../../config/env');
 const { createPaypalService } = require('./index');
 const { createNotificationService } = require('../notifications');
+const { assertProjectNotCancelled } = require('../../lib/projectStatus');
 
 const RELEASABLE_STATUSES = new Set(['FUNDED', 'IN_PROGRESS', 'SUBMITTED', 'AUDITING', 'PASSED']);
 
@@ -195,6 +196,7 @@ function createEscrowService({
       err.code = 'forbidden';
       throw err;
     }
+    assertProjectNotCancelled(project, 'funding the vault');
 
     const resolved = await resolveFundAmount({ project, milestoneId, amountCents });
     const payCurrency = String(currency || resolved.currency || 'USD').toUpperCase();
@@ -527,10 +529,39 @@ function createEscrowService({
       }
     }
 
+    // When every milestone is paid/released/cancelled, complete project + return deposit
+    let depositReturn = null;
+    try {
+      const siblings = await db.milestone.findMany({
+        where: { projectId: milestone.projectId },
+        select: { status: true },
+      });
+      const allDone = siblings.every((m) =>
+        ['PAID', 'RELEASED', 'CANCELLED'].includes(m.status)
+      );
+      if (allDone) {
+        await db.project.update({
+          where: { id: milestone.projectId },
+          data: { status: 'COMPLETED' },
+        });
+        const { createExitService } = require('../exit/exitService');
+        const exitService = createExitService({ paypal, db, notifications });
+        depositReturn = await exitService.returnDepositOnCompletion({
+          projectId: milestone.projectId,
+        });
+      }
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'test') {
+        // eslint-disable-next-line no-console
+        console.warn('[exit] deposit return on completion failed:', err.message || err);
+      }
+    }
+
     return {
       milestone: paid,
       previousStatus: milestone.status,
       released: updated,
+      depositReturn,
       paypal: {
         mode: env.paypal.mode,
         mock: paypal.isMock(),

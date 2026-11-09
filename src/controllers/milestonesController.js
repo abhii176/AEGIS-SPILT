@@ -2,6 +2,7 @@ const { prisma } = require('../lib/prisma');
 const { env } = require('../config/env');
 const { isProjectParticipant } = require('./projectsController');
 const { validateAddMilestoneBody } = require('../lib/projectValidation');
+const { assertProjectNotCancelled } = require('../lib/projectStatus');
 
 async function loadProjectOrFail(projectId, userId) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -29,7 +30,8 @@ async function loadProjectOrFail(projectId, userId) {
 async function addMilestone(req, res, next) {
   try {
     const { projectId } = req.params;
-    await loadProjectOrFail(projectId, req.user.id);
+    const project = await loadProjectOrFail(projectId, req.user.id);
+    assertProjectNotCancelled(project, 'adding milestones');
 
     const {
       title,

@@ -1,7 +1,7 @@
 const express = require('express');
 const { requireAuth } = require('../middleware/authStub');
 const { requireKycAndConsent } = require('../middleware/requireKycAndConsent');
-const { payoutLimiter } = require('../middleware/rateLimit');
+const { payoutLimiter, vaultLimiter } = require('../middleware/rateLimit');
 const {
   createProject,
   listProjects,
@@ -13,6 +13,15 @@ const {
 } = require('../controllers/milestonesController');
 const { releaseMilestone } = require('../controllers/payoutsController');
 const { linkGithubToMilestone } = require('../controllers/githubLinkController');
+const {
+  previewExit,
+  requestCancel,
+  acceptCancel,
+  clientExit,
+  freelancerAbandon,
+  fundDeposit,
+  captureDeposit,
+} = require('../controllers/exitController');
 
 const router = express.Router();
 
@@ -55,6 +64,27 @@ router.post(
   requireAuth,
   requireKycAndConsent,
   releaseMilestone
+);
+
+/** Exit / cancel / deposit */
+router.get('/:projectId/exit/preview', requireAuth, requireKycAndConsent, previewExit);
+router.post('/:projectId/cancel/request', requireAuth, requireKycAndConsent, requestCancel);
+router.post('/:projectId/cancel/accept', requireAuth, requireKycAndConsent, acceptCancel);
+router.post('/:projectId/exit/client', requireAuth, requireKycAndConsent, clientExit);
+router.post('/:projectId/exit/abandon', requireAuth, requireKycAndConsent, freelancerAbandon);
+router.post(
+  '/:projectId/deposit/fund',
+  vaultLimiter,
+  requireAuth,
+  requireKycAndConsent,
+  fundDeposit
+);
+router.post(
+  '/:projectId/deposit/capture',
+  vaultLimiter,
+  requireAuth,
+  requireKycAndConsent,
+  captureDeposit
 );
 
 module.exports = router;

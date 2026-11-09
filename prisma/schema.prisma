@@ -12,7 +12,7 @@ enum UserRole {
   FREELANCER
 }
 
-/// Consent document kinds. MONITORING covers chats + call recordings for disputes/counseling.
+/// Consent document kinds. MONITORING covers the full User Consent Agreement (incl. chats/calls).
 enum ConsentType {
   MONITORING
   TERMS_OF_SERVICE
@@ -23,6 +23,12 @@ enum ProjectStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+  /// Both parties agreed to cancel in-app
+  CANCELLED_MUTUAL
+  /// Client cancelled without freelancer agreement (penalty path)
+  CANCELLED_BY_CLIENT
+  /// Freelancer abandoned; deposit forfeited
+  ABANDONED_BY_FREELANCER
   DISPUTED
 }
 
@@ -54,6 +60,35 @@ enum VaultFundStatus {
   CANCELLED
 }
 
+/// Freelancer security deposit lifecycle.
+enum DepositStatus {
+  PENDING
+  HELD
+  RETURNED
+  FORFEITED
+}
+
+enum CancellationRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  SUPERSEDED
+}
+
+/// Which exit path was executed (money rules differ).
+enum ExitPath {
+  MUTUAL
+  CLIENT_ONESIDED
+  FREELANCER_WALKAWAY
+}
+
+enum DepositDisposition {
+  NONE
+  RETURNED
+  FORFEITED
+}
+
 model User {
   id                       String   @id @default(cuid())
   email                    String   @unique
@@ -71,22 +106,26 @@ model User {
   createdAt                DateTime @default(now()) @map("created_at")
   updatedAt                DateTime @updatedAt @map("updated_at")
 
-  consentLogs           ConsentLogs[]
-  projectsAsClient      Project[]     @relation("ProjectClient")
-  projectsAsFreelancer  Project[]     @relation("ProjectFreelancer")
-  vaultFunds            VaultFund[]
-  mergeEvents           MergeEvent[]
-  notifications         Notification[]
+  consentLogs              ConsentLogs[]
+  projectsAsClient         Project[]               @relation("ProjectClient")
+  projectsAsFreelancer     Project[]               @relation("ProjectFreelancer")
+  vaultFunds               VaultFund[]
+  freelancerDeposits       FreelancerDeposit[]
+  mergeEvents              MergeEvent[]
+  notifications            Notification[]
+  cancellationRequests     CancellationRequest[]   @relation("CancellationRequester")
+  cancellationResponses    CancellationRequest[]   @relation("CancellationResponder")
+  exitEvents               ExitEvent[]
 
   @@map("users")
 }
 
-/// Exact timestamp + IP when the user agreed to mandatory monitoring ToS.
+/// Exact timestamp + IP when the user agreed to the User Consent Agreement.
 model ConsentLogs {
   id             String      @id @default(cuid())
   userId         String      @map("user_id")
   consentType    ConsentType @map("consent_type")
-  /// Document / policy version the user accepted (e.g. MONITORING_CONSENT_VERSION)
+  /// Document / policy version the user accepted (e.g. 2.0.0)
   consentVersion String      @map("consent_version")
   /// Server-recorded moment of agreement
   agreedAt       DateTime    @default(now()) @map("agreed_at")
@@ -112,6 +151,12 @@ model Project {
   status       ProjectStatus @default(DRAFT)
   /// Aggregate escrow lock state for the project vault
   fundedStatus ProjectFundedStatus @default(UNFUNDED) @map("funded_status")
+  /// Early-exit penalty as percent of remaining vault (client one-sided cancel)
+  earlyExitPenaltyPercent Int @default(20) @map("early_exit_penalty_percent")
+  /// Freelancer security deposit in cents (null → 10% of milestone total until locked)
+  freelancerDepositAmountCents Int? @map("freelancer_deposit_amount_cents")
+  /// High-level deposit lifecycle for the project
+  depositStatus DepositStatus @default(PENDING) @map("deposit_status")
   /// Most recent PayPal Orders v2 order id that locked project/milestone funds
   paypalOrderId   String? @map("paypal_order_id")
   /// Most recent PayPal capture id after client payment is captured
@@ -119,17 +164,21 @@ model Project {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  client     User        @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
-  freelancer User        @relation("ProjectFreelancer", fields: [freelancerId], references: [id], onDelete: Restrict)
-  milestones    Milestone[]
-  vaultFunds    VaultFund[]
-  mergeEvents   MergeEvent[]
-  notifications Notification[]
+  client               User                  @relation("ProjectClient", fields: [clientId], references: [id], onDelete: Restrict)
+  freelancer           User                  @relation("ProjectFreelancer", fields: [freelancerId], references: [id], onDelete: Restrict)
+  milestones           Milestone[]
+  vaultFunds           VaultFund[]
+  freelancerDeposits   FreelancerDeposit[]
+  mergeEvents          MergeEvent[]
+  notifications        Notification[]
+  cancellationRequests CancellationRequest[]
+  exitEvents           ExitEvent[]
 
   @@index([clientId])
   @@index([freelancerId])
   @@index([status])
   @@index([fundedStatus])
+  @@index([depositStatus])
   @@map("projects")
 }
 
@@ -199,6 +248,9 @@ model VaultFund {
   paypalCaptureId String?         @map("paypal_capture_id")
   /// PayPal approve link when capture is deferred to buyer redirect
   approvalUrl     String?         @map("approval_url")
+  /// Cents already refunded from this capture (idempotent exit refunds)
+  refundedCents   Int             @default(0) @map("refunded_cents")
+  paypalRefundIds String[]        @default([]) @map("paypal_refund_ids")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -211,6 +263,85 @@ model VaultFund {
   @@index([milestoneId])
   @@index([paypalOrderId])
   @@map("vault_funds")
+}
+
+/// Freelancer security deposit — PayPal Orders approve → capture (same rails as vault).
+model FreelancerDeposit {
+  id              String          @id @default(cuid())
+  userId          String          @map("user_id")
+  projectId       String          @map("project_id")
+  amountCents     Int             @map("amount_cents")
+  currency        String          @default("USD")
+  status          VaultFundStatus @default(PENDING)
+  paypalOrderId   String?         @map("paypal_order_id")
+  paypalCaptureId String?         @map("paypal_capture_id")
+  approvalUrl     String?         @map("approval_url")
+  /// Payout/refund ids when deposit is returned or forfeited
+  dispositionBatchId String?      @map("disposition_batch_id")
+  dispositionItemId  String?      @map("disposition_item_id")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([paypalOrderId])
+  @@map("freelancer_deposits")
+}
+
+/// In-app mutual-cancel request (one party asks, other accepts).
+model CancellationRequest {
+  id                 String                     @id @default(cuid())
+  projectId          String                     @map("project_id")
+  requestedByUserId  String                     @map("requested_by_user_id")
+  reason             String?
+  status             CancellationRequestStatus  @default(PENDING)
+  respondedByUserId  String?                    @map("responded_by_user_id")
+  respondedAt        DateTime?                  @map("responded_at")
+  createdAt          DateTime                   @default(now()) @map("created_at")
+  updatedAt          DateTime                   @updatedAt @map("updated_at")
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedBy User    @relation("CancellationRequester", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  respondedBy User?   @relation("CancellationResponder", fields: [respondedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([requestedByUserId])
+  @@map("cancellation_requests")
+}
+
+/// Immutable record of an executed exit (money destinations + amounts).
+model ExitEvent {
+  id                     String              @id @default(cuid())
+  projectId              String              @map("project_id")
+  exitPath               ExitPath            @map("exit_path")
+  initiatedByUserId      String              @map("initiated_by_user_id")
+  reason                 String?
+  /// Snapshot of remaining vault before distribution (cents)
+  remainingVaultCents    Int                 @map("remaining_vault_cents")
+  /// Penalty paid to freelancer (client one-sided only), else 0
+  penaltyCents           Int                 @default(0) @map("penalty_cents")
+  /// Refunded back to client from vault
+  clientRefundCents      Int                 @default(0) @map("client_refund_cents")
+  /// Extra payout to freelancer from vault (penalty)
+  freelancerPayoutCents  Int                 @default(0) @map("freelancer_payout_cents")
+  /// Deposit amount involved (if any)
+  depositCents           Int                 @default(0) @map("deposit_cents")
+  depositDisposition     DepositDisposition  @default(NONE) @map("deposit_disposition")
+  /// Optional PayPal / mock transfer ids
+  transferIds            Json?
+  /// Idempotency: one successful exit per project
+  idempotencyKey         String              @unique @map("idempotency_key")
+  createdAt              DateTime            @default(now()) @map("created_at")
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  initiatedBy User    @relation(fields: [initiatedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([exitPath])
+  @@map("exit_events")
 }
 
 /// Code merge events from GitHub webhooks or hackathon demo simulate.
@@ -238,11 +369,11 @@ model MergeEvent {
   @@map("merge_events")
 }
 
-/// In-app alerts for funded vault, AI audit result, and payout release.
+/// In-app alerts for funded vault, AI audit result, payout, and exit events.
 model Notification {
   id          String    @id @default(cuid())
   userId      String    @map("user_id")
-  /// FUNDED | AUDIT_PASSED | AUDIT_FAILED | PAID
+  /// FUNDED | AUDIT_PASSED | AUDIT_FAILED | PAID | CANCEL_* | DEPOSIT_*
   type        String
   message     String
   projectId   String?   @map("project_id")
