@@ -9,6 +9,10 @@ const {
   listDemoUsers,
   requireDemoAdminKey,
 } = require('../controllers/demoUsersController');
+const {
+  getAgencyPreview,
+  seedAgencyPreview,
+} = require('../controllers/agencyDemoController');
 
 const router = express.Router();
 
@@ -19,6 +23,13 @@ router.use(adminDemoLimiter);
  */
 router.post('/users/seed', requireDemoAdminKey, seedDemoUsers);
 router.get('/users', requireDemoAdminKey, listDemoUsers);
+
+/**
+ * Agency dashboard preview. Read-only totals plus an idempotent sample seed.
+ * Demo key only — does not fund, release, or refund.
+ */
+router.get('/agency', requireDemoAdminKey, getAgencyPreview);
+router.post('/agency/seed', requireDemoAdminKey, seedAgencyPreview);
 
 /**
  * Hackathon demo trigger: release milestone payout without waiting for AI auditor.

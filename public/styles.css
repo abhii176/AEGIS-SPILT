@@ -1339,6 +1339,126 @@ main {
   margin: 0;
 }
 
+.agency-frame {
+  max-width: 58rem;
+}
+
+.agency-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px dashed rgba(232, 184, 74, 0.75);
+  border-radius: 14px;
+  background: rgba(232, 184, 74, 0.08);
+  color: var(--fog);
+  font-weight: 600;
+}
+
+.coming-soon {
+  margin: 0 0 1rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.agency-plain {
+  margin: 0.85rem 0;
+  color: rgba(216, 239, 232, 0.82);
+}
+
+.stat-row {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0.4rem 0 0.2rem;
+}
+
+.stat-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.75rem 0.85rem;
+  background: rgba(4, 18, 16, 0.45);
+}
+
+.stat-label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(216, 239, 232, 0.55);
+}
+
+.stat-value {
+  margin: 0.2rem 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  color: var(--fog);
+}
+
+.stat-split,
+.stat-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(216, 239, 232, 0.7);
+}
+
+.stat-hint {
+  margin-top: 0.25rem;
+}
+
+.agency-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.agency-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.agency-table caption {
+  caption-side: bottom;
+  padding: 0.65rem 0.75rem 0.75rem;
+  text-align: left;
+  color: rgba(216, 239, 232, 0.62);
+  font-size: 0.8rem;
+}
+
+.agency-table th,
+.agency-table td {
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+}
+
+.agency-project {
+  display: block;
+  font-weight: 600;
+}
+
+.agency-project-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: rgba(216, 239, 232, 0.62);
+  white-space: normal;
+}
+
+.agency-table th {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(216, 239, 232, 0.55);
+  font-weight: 600;
+}
+
+.agency-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 @media (max-width: 640px) {
   .topbar {
     flex-wrap: wrap;

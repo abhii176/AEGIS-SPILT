@@ -9,6 +9,7 @@ const STEPS = [
   { id: 'paid', label: 'Paid' },
   { id: 'exit', label: 'Exit' },
   { id: 'counselor', label: 'Counselor' },
+  { id: 'agency', label: 'Agency' },
 ];
 
 const state = {
@@ -31,6 +32,7 @@ const state = {
   chatMessages: [],
   chatPollTimer: null,
   counselorStatus: 'OPEN',
+  agencySeedNote: '',
   kycHint: null,
   kycLocal: null,
 };
@@ -107,6 +109,7 @@ function go(step) {
   }
   if (step === 'project' || step === 'exit' || step === 'paid') refreshDisputeOutcome();
   if (step === 'counselor') refreshCounselor();
+  if (step === 'agency') refreshAgency();
 }
 
 function renderRail() {
@@ -1486,6 +1489,49 @@ async function confirmCounselorDecision(form) {
   return data;
 }
 
+function agencyPanelApi() {
+  return globalThis.AegisAgencyPanel;
+}
+
+function paintAgency(dashboard) {
+  const apiPanel = agencyPanelApi();
+  const body = $('#agency-body');
+  if (!apiPanel || !body || !dashboard) return;
+  const note = $('#agency-seed-note');
+  if (note) note.textContent = state.agencySeedNote || '';
+  if (!dashboard.projects || !dashboard.projects.length) {
+    body.innerHTML =
+      '<p class="field-hint">No projects yet. Load demo agency adds sample rows for Escrow eSports Studio. A real Sarah and Rohan project shows up here as well.</p>';
+    return;
+  }
+  body.innerHTML = apiPanel.render(dashboard);
+}
+
+async function refreshAgency() {
+  try {
+    const dashboard = await api('/api/admin/demo/agency', { auth: false, demo: true });
+    paintAgency(dashboard);
+  } catch (err) {
+    const note = $('#agency-seed-note');
+    if (note) note.textContent = err.message || 'Could not load the agency preview.';
+  }
+}
+
+async function seedAgency() {
+  const data = await api('/api/admin/demo/agency/seed', {
+    method: 'POST',
+    auth: false,
+    demo: true,
+  });
+  const created = data.seed?.createdProjects || 0;
+  const existing = data.seed?.existingProjects || 0;
+  state.agencySeedNote = created
+    ? `Loaded ${created} sample project${created === 1 ? '' : 's'}.`
+    : `Already loaded. ${existing} sample project${existing === 1 ? '' : 's'} left as they were.`;
+  paintAgency(data.dashboard);
+  return data;
+}
+
 function bindUi() {
   renderRail();
 
@@ -1502,6 +1548,15 @@ function bindUi() {
       await seedUsers();
     } catch (err) {
       showLog('#log-users', err.data || err.message);
+    }
+  });
+
+  $('#btn-load-agency')?.addEventListener('click', async () => {
+    try {
+      await seedAgency();
+    } catch (err) {
+      const note = $('#agency-seed-note');
+      if (note) note.textContent = err.message || 'Could not load the agency preview.';
     }
   });
 

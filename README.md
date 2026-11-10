@@ -15,6 +15,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
 | **Project chat** | Plain-text client ↔ freelancer messages per project (DB-backed; polling; allowed after cancel) |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
+| **Agency preview** | Read-only “Agency (preview)” tab. One Load demo agency button, summary cards, and a project table. White-label is marked coming soon |
 
 ## Deploy (public HTTPS for judges)
 
@@ -52,8 +53,9 @@ Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until session
 1. `npm start` → open `http://localhost:3000`
 2. **Seed Sarah, Rohan & Maya** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
 3. On Verify, use **Quick verify (judges)** or walk the DigiLocker-style sandbox (email OTP, phone OTP, sandbox ID). Then sign the consent agreement. Stripe Identity stays disabled.
-4. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
-5. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
+4. Open **Agency** in the step rail and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
+5. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
+6. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
 
 PayPal browser return/cancel (no auth header):
 
@@ -107,6 +109,8 @@ POST /api/notifications/mark-read          # { notificationIds } or { all: true 
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
 POST /api/admin/demo/users/seed            # seed Sarah + Rohan (X-Demo-Admin-Key)
 GET  /api/admin/demo/users                # list demo users (X-Demo-Admin-Key)
+GET  /api/admin/demo/agency               # agency dashboard preview (read-only, X-Demo-Admin-Key)
+POST /api/admin/demo/agency/seed          # idempotent sample agency rows (no PayPal movement)
 POST /api/admin/demo/milestones/:milestoneId/release         # gated + X-Demo-Admin-Key
 POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Admin-Key
 POST /api/merge                             # gated
