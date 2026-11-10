@@ -3,6 +3,7 @@ const { env } = require('../../config/env');
 const { createPaypalService } = require('./index');
 const { createNotificationService } = require('../notifications');
 const { assertProjectNotCancelled } = require('../../lib/projectStatus');
+const { releaseBlockedAwaitingClientSignoff } = require('../../lib/clientSignoff');
 
 const RELEASABLE_STATUSES = new Set(['FUNDED', 'IN_PROGRESS', 'SUBMITTED', 'AUDITING', 'PASSED']);
 
@@ -466,6 +467,13 @@ function createEscrowService({
       const err = new Error('Milestone already released/paid');
       err.status = 409;
       err.code = 'already_released';
+      throw err;
+    }
+
+    if (releaseBlockedAwaitingClientSignoff(milestone, { allowDemoBypass })) {
+      const err = new Error('This milestone needs the client to sign off before payout');
+      err.status = 409;
+      err.code = 'awaiting_client_signoff';
       throw err;
     }
 

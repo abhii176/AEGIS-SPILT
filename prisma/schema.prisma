@@ -230,6 +230,12 @@ model Milestone {
   /// Human-readable audit summary for demo / next AI PR
   auditReport         String?         @map("audit_report") @db.Text
   auditCheckedAt      DateTime?       @map("audit_checked_at")
+  /// When true, an AI pass waits for the client before PayPal payout
+  requiresManualSignoff Boolean       @default(false) @map("requires_manual_signoff")
+  /// When the client approved subjective work (null until they sign off)
+  manualSignedOffAt   DateTime?       @map("manual_signed_off_at")
+  /// Client user id that approved subjective work
+  manualSignedOffByUserId String?     @map("manual_signed_off_by_user_id")
   /// PayPal Payouts batch id once this milestone is released
   paypalPayoutBatchId String?         @map("paypal_payout_batch_id")
   /// PayPal Payouts item id for this milestone release

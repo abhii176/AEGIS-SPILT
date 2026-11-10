@@ -48,6 +48,7 @@ function createApp() {
     res.json({
       ok: true,
       service: 'aegis-split',
+      platformFeePercent: 0,
       paypal: {
         mock: paypalClient.isMock(),
         mockFlag: env.paypal.mock,

@@ -91,6 +91,7 @@ async function githubWebhook(req, res, next) {
         : null,
       alreadyReleased: Boolean(result.alreadyReleased),
       alreadyFailed: Boolean(result.alreadyFailed),
+      awaitingClientSignoff: Boolean(result.awaitingClientSignoff),
     });
   } catch (err) {
     // Ack business/KYC misses with 200 so GitHub does not retry forever
@@ -199,7 +200,10 @@ async function simulateMerge(req, res, next) {
         : null,
       alreadyReleased: Boolean(result.alreadyReleased),
       alreadyFailed: Boolean(result.alreadyFailed),
-      note: 'Simulated GitHub merge without a public webhook URL.',
+      awaitingClientSignoff: Boolean(result.awaitingClientSignoff),
+      note: result.awaitingClientSignoff
+        ? 'AI passed. Payout waits for the client sign-off.'
+        : 'Simulated GitHub merge without a public webhook URL.',
     });
   } catch (err) {
     return next(err);

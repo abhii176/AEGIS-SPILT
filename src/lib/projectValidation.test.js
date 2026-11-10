@@ -61,6 +61,25 @@ function testAddMilestoneValidation() {
     amount_cents: 100,
   });
   assert.strictEqual(snake.ok, true);
+
+  const manual = validateAddMilestoneBody({
+    title: 'M1',
+    taskDescription: 'Match the mock',
+    acceptanceCriteria: 'Layout matches the approved frame',
+    amountCents: 100,
+    requiresManualSignoff: true,
+  });
+  assert.strictEqual(manual.ok, true);
+  assert.strictEqual(manual.requiresManualSignoff, true);
+
+  const badFlag = validateAddMilestoneBody({
+    title: 'M1',
+    taskDescription: 'Match the mock',
+    acceptanceCriteria: 'Layout matches the approved frame',
+    amountCents: 100,
+    requiresManualSignoff: 'yes',
+  });
+  assert.ok(badFlag.errors.includes('invalid_requires_manual_signoff'));
 }
 
 testCreateProjectValidation();

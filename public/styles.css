@@ -411,11 +411,89 @@ main {
   color: var(--fog);
 }
 
+.hero-kicker {
+  margin: 0 0 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
 .hero-sub {
-  margin: 0 0 1.75rem;
+  margin: 0 0 1.1rem;
   font-size: 1.05rem;
   color: rgba(216, 239, 232, 0.78);
-  max-width: 32rem;
+  max-width: 36rem;
+}
+
+.trust-row {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0 0 1.4rem;
+  padding: 0;
+  list-style: none;
+  max-width: 36rem;
+}
+
+.trust-row li {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.75rem 0.9rem;
+  background: rgba(8, 28, 25, 0.45);
+  font-size: 0.9rem;
+  color: rgba(216, 239, 232, 0.82);
+}
+
+.trust-row strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--fog);
+}
+
+.rule-grid {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0 0 1.15rem;
+}
+
+@media (min-width: 720px) {
+  .rule-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rule-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.8rem 0.9rem;
+  background: rgba(8, 28, 25, 0.4);
+}
+
+.rule-card h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.rule-card p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: rgba(216, 239, 232, 0.75);
+}
+
+.field-hint {
+  margin: -0.35rem 0 0.9rem;
+  font-size: 0.82rem;
+  color: rgba(216, 239, 232, 0.62);
+}
+
+.evidence-board {
+  margin-top: 1rem;
+}
+
+.evidence-board h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
 }
 
 .cta-row,
@@ -741,10 +819,16 @@ main {
 .site-foot {
   display: flex;
   justify-content: space-between;
+  align-items: flex-end;
   gap: 1rem;
   padding: 0.9rem 1.25rem 1.25rem;
   font-size: 0.8rem;
   color: rgba(216, 239, 232, 0.45);
+}
+
+.site-foot-copy {
+  display: grid;
+  gap: 0.2rem;
 }
 
 #health-dot.ok {

@@ -281,10 +281,11 @@ function createMergeHandler({
 
     await emitAuditNotice(true, passed);
 
-    if (skipRelease) {
+    if (skipRelease || passed.requiresManualSignoff === true) {
       return {
         alreadyReleased: false,
         alreadyFailed: false,
+        awaitingClientSignoff: passed.requiresManualSignoff === true,
         milestone: passed,
         audit,
         payout: null,
@@ -301,6 +302,7 @@ function createMergeHandler({
     return {
       alreadyReleased: false,
       alreadyFailed: false,
+      awaitingClientSignoff: false,
       milestone: payout.milestone,
       audit,
       payout,

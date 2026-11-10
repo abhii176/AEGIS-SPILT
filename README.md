@@ -10,7 +10,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **Projects + milestones** | Client/freelancer projects, milestones with acceptance criteria + amounts |
 | **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
 | **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
-| **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics) |
+| **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics). Optional client sign-off holds payout until the client approves |
 | **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID / exit+deposit alerts (idempotent); demo bell + toasts |
 | **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
 | **Project chat** | Plain-text client ↔ freelancer messages per project (DB-backed; polling; allowed after cancel) |
@@ -78,6 +78,8 @@ POST /api/projects/:projectId/milestones    # gated
 GET  /api/projects/:projectId/milestones
 POST /api/projects/:projectId/milestones/:milestoneId/github   # gated — link repo/PR
 POST /api/projects/:projectId/milestones/:milestoneId/release  # gated — PayPal Payouts
+POST /api/projects/:projectId/milestones/:milestoneId/signoff  # client only, after AI pass, when manual sign-off was requested
+GET  /api/projects/:projectId/evidence                         # chat + audit + diff preview (parties only)
 GET  /api/projects/:projectId/exit/preview?path=MUTUAL|CLIENT_ONESIDED|FREELANCER_WALKAWAY
 POST /api/projects/:projectId/cancel/request
 POST /api/projects/:projectId/cancel/accept
@@ -243,7 +245,7 @@ X-Demo-Admin-Key: hackathon-demo-key
 4. Confirm vault fund `status: CAPTURED` and milestone `FUNDED`.
 5. Link GitHub: `POST .../milestones/:id/github` with `githubRepoFullName` + optional PR.
 6. Simulate merge (or fire a real webhook): `POST /api/admin/demo/milestones/:id/simulate-merge` with `X-Demo-Admin-Key`.
-7. Confirm audit `PASS`, milestone `PAID` + `paypal_payout_batch_id` / `github_merge_sha` set.
+7. Confirm audit `PASS`, milestone `PAID` + `paypal_payout_batch_id` / `github_merge_sha` set. If the milestone was created with `requiresManualSignoff: true`, the pass stops at `PASSED` until the client calls `POST .../signoff`.
 8. Judges see the structured audit on the simulate-merge / webhook JSON (`audit.reason`, `audit.checks[]`) and on `milestone.auditReport` (PASS/FAIL text with ✓/✗ evidence).
 
 ## Tests
