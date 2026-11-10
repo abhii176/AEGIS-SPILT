@@ -51,9 +51,9 @@ Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until session
 ### Demo UI (judges)
 
 1. `npm start` → open `http://localhost:3000`
-2. **Seed Sarah & Rohan** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
+2. **Seed Sarah, Rohan & Maya** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
 2b. Open **Agency** in the step rail and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
-3. Switch user → verify gov ID + monitoring consent
+3. On Verify, use **Quick verify (judges)** or walk the DigiLocker-style sandbox (email OTP, phone OTP, sandbox ID). Then sign the consent agreement. Stripe Identity stays disabled.
 4. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
 5. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
 
@@ -67,9 +67,17 @@ PayPal browser return/cancel (no auth header):
 ```
 GET  /                                 # demo UI (static)
 GET  /api/auth/me                      # stub user for X-User-Id
-POST /api/auth/verify-identity
-GET  /api/auth/verify-identity/callback/digilocker
-GET  /api/auth/verify-identity/callback/stripe
+POST /api/auth/verify-identity                 # older scaffold; does not set the ID flag
+GET  /api/auth/verify-identity/callback/digilocker  # refused; use the sandbox routes
+GET  /api/auth/verify-identity/callback/stripe      # refused; Stripe Identity is roadmap
+GET  /api/auth/kyc/sandbox                      # DigiLocker-style sandbox hint (demo OTP + fake ID)
+POST /api/auth/kyc/sandbox/email/start
+POST /api/auth/kyc/sandbox/email/confirm
+POST /api/auth/kyc/sandbox/phone/start
+POST /api/auth/kyc/sandbox/phone/confirm
+POST /api/auth/kyc/sandbox/digilocker/start
+POST /api/auth/kyc/sandbox/digilocker/confirm   # sets gov ID; stores mask + last 4 only
+POST /api/auth/kyc/sandbox/quick                # one-click for Sarah, Rohan, Maya
 GET  /api/consent/agreement                # User Consent Agreement markdown (v2.0.0)
 POST /api/consent/monitoring               # { accepted, agreedName, agreedDate } → ConsentLogs
 
