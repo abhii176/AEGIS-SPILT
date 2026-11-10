@@ -18,6 +18,7 @@ const state = {
   projectId: localStorage.getItem('aegis.projectId') || '',
   milestoneId: localStorage.getItem('aegis.milestoneId') || '',
   approvalUrl: '',
+  depositApprovalUrl: '',
   lastAudit: null,
   lastMilestone: null,
   lastProject: null,
@@ -90,6 +91,7 @@ function go(step) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (step === 'verify') refreshVerifyUi();
   if (step === 'paid') refreshPaid();
+  if (step === 'fund') refreshDepositPanel();
   if (step === 'project') {
     refreshChat();
     startChatPolling();
@@ -226,6 +228,7 @@ function selectPersona(key) {
   refreshVerifyUi();
   refreshNotifications();
   refreshChat();
+  renderDepositPanel();
 }
 
 async function refreshMe() {
@@ -236,6 +239,7 @@ async function refreshMe() {
   if (match) state.users[match[0]] = { ...state.users[match[0]], ...user };
   updateSessionChip();
   refreshVerifyUi();
+  renderDepositPanel();
   return user;
 }
 
@@ -396,9 +400,11 @@ async function createProjectAndMilestone(form) {
   state.milestoneId = milestone.id;
   state.lastMilestone = milestone;
   state.lastProject = project;
+  state.depositApprovalUrl = '';
   persist();
   $('#btn-project-next').disabled = false;
   renderProjectMeta(project, amountCents);
+  renderDepositPanel();
   showLog('#log-project', { project, milestone });
   await refreshChat();
   startChatPolling();
@@ -408,10 +414,14 @@ function renderProjectMeta(project, milestoneTotalCents) {
   const box = $('#project-meta');
   if (!box || !project) return;
   box.hidden = false;
+  const resolved = globalThis.AegisDepositPanel
+    ? globalThis.AegisDepositPanel.amountCents(project, milestoneTotalCents)
+    : null;
   const deposit =
-    project.effectiveDepositAmountCents ??
-    project.freelancerDepositAmountCents ??
-    Math.floor(((milestoneTotalCents || 0) * 10) / 100);
+    resolved != null
+      ? resolved
+      : (project.freelancerDepositAmountCents ??
+          Math.floor(((milestoneTotalCents || 0) * 10) / 100));
   $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 50);
   $('#meta-deposit').textContent = `$${(deposit / 100).toFixed(2)} (${project.depositStatus || 'PENDING'})`;
   $('#meta-status').textContent = project.status || '—';
@@ -628,28 +638,89 @@ async function confirmPendingExit() {
   return result;
 }
 
+function renderDepositPanel() {
+  const statusEl = $('#deposit-status');
+  const hintEl = $('#deposit-hint');
+  const actions = $('#deposit-actions');
+  const link = $('#link-deposit-approve');
+  const panelApi = globalThis.AegisDepositPanel;
+  if (!statusEl || !hintEl || !actions || !panelApi) return;
+
+  const project = state.lastProject;
+  const milestoneTotal =
+    state.lastMilestone?.amountCents != null ? Number(state.lastMilestone.amountCents) : null;
+  const depositView = panelApi.view({
+    userId: state.userId || state.user?.id || '',
+    userRole: state.user?.role || '',
+    project,
+    freelancerName: project?.freelancer?.name || state.users.rohan?.name || '',
+    milestoneTotalCents: milestoneTotal,
+    depositApprovalUrl: state.depositApprovalUrl || '',
+  });
+
+  statusEl.hidden = false;
+  statusEl.textContent = depositView.statusText;
+  hintEl.hidden = !depositView.showHint;
+  hintEl.textContent = depositView.hintText;
+  actions.hidden = !depositView.showActions;
+  if (link) {
+    link.hidden = !depositView.showApprove;
+    if (depositView.approveUrl) link.href = depositView.approveUrl;
+  }
+}
+
+async function refreshDepositPanel() {
+  if (state.projectId && state.userId) {
+    try {
+      const data = await api(`/api/projects/${state.projectId}`);
+      if (data?.project) {
+        state.lastProject = { ...state.lastProject, ...data.project };
+        if (Array.isArray(data.project.freelancerDeposits)) {
+          const open = data.project.freelancerDeposits.find(
+            (row) => row.status === 'ORDER_CREATED' && row.approvalUrl
+          );
+          state.depositApprovalUrl = open?.approvalUrl || '';
+        }
+        if (['HELD', 'RETURNED', 'FORFEITED'].includes(String(data.project.depositStatus || ''))) {
+          state.depositApprovalUrl = '';
+        }
+        renderProjectMeta(
+          state.lastProject,
+          data.project.milestoneTotalCents ?? state.lastMilestone?.amountCents
+        );
+      }
+    } catch {
+      /* keep the last snapshot if the project fetch fails */
+    }
+  }
+  renderDepositPanel();
+}
+
 async function fundDeposit() {
   if (!state.projectId) throw new Error('Create a project first');
-  const rohan = state.users.rohan;
-  if (!rohan?.id) throw new Error('Seed Rohan first');
-  await ensureActorReady(rohan.id);
+  let project = state.lastProject;
+  if (!project?.freelancerId || project.id !== state.projectId) {
+    const data = await api(`/api/projects/${state.projectId}`);
+    project = data.project;
+    state.lastProject = project;
+  }
+  if (state.userId !== project.freelancerId) {
+    throw new Error('Only the project freelancer can fund the security deposit');
+  }
+  await ensureActorReady(project.freelancerId);
+  updateSessionChip();
   const capture = $('#fund-capture')?.checked;
   const data = await api(`/api/projects/${state.projectId}/deposit/fund`, {
     method: 'POST',
     body: { ...(capture ? { capture: true } : {}) },
   });
   const approvalUrl = data.approveUrl || data.paypal?.approvalUrl || '';
-  const link = $('#link-deposit-approve');
-  if (approvalUrl && !capture) {
-    link.hidden = false;
-    link.href = approvalUrl;
-  } else {
-    link.hidden = true;
-  }
+  state.depositApprovalUrl = approvalUrl && !capture ? approvalUrl : '';
   if (data.project) {
-    state.lastProject = data.project;
-    renderProjectMeta(data.project);
+    state.lastProject = { ...state.lastProject, ...data.project };
+    renderProjectMeta(state.lastProject);
   }
+  renderDepositPanel();
   showLog('#log-fund', { deposit: data });
   await refreshNotifications({ toastNew: true });
 }
@@ -696,6 +767,8 @@ async function fundVault() {
     },
   });
   if (funded) await refreshNotifications({ toastNew: true });
+  updateSessionChip();
+  renderDepositPanel();
 }
 
 async function linkGithub(form) {

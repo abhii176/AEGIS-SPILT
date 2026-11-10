@@ -25,6 +25,11 @@
   box-sizing: border-box;
 }
 
+/* Author display rules (flex/grid on .btn and .action-row) would otherwise beat the UA [hidden] style. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -419,6 +424,24 @@ main {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.deposit-panel {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.85rem;
+}
+
+.deposit-status {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--fog);
+}
+
+.deposit-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(216, 239, 232, 0.62);
 }
 
 .btn {
