@@ -141,6 +141,16 @@ function makeHarness() {
         return { ...state.dispute };
       },
       findFirst: async () => (state.dispute ? { ...state.dispute } : null),
+      findMany: async () => {
+        if (!state.dispute) return [];
+        return [
+          {
+            ...state.dispute,
+            project: bundle(),
+            raisedBy: { id: 'sarah', name: 'Sarah Chen', role: 'CLIENT' },
+          },
+        ];
+      },
       updateMany: async ({ where, data }) => {
         if (
           !state.dispute ||
@@ -352,10 +362,49 @@ async function testEvidenceContents() {
   assert.strictEqual(evidence.callRecordings.recordings, undefined);
 }
 
+async function testSamplePreviewDoesNotMoveMoney() {
+  const { service, state, calls } = makeHarness();
+  await service.raiseDispute({
+    projectId: 'proj-1',
+    userId: 'sarah',
+    reason: 'Need a counselor',
+  });
+  state.project.description = 'agency-sample:caster-thirds\nSample project.';
+
+  await assert.rejects(
+    () => service.previewDecision({ disputeId: 'disp-1', decision: 'SPLIT' }),
+    (err) => err.code === 'sample_preview_readonly'
+  );
+  await assert.rejects(
+    () =>
+      service.decideDispute({
+        disputeId: 'disp-1',
+        decision: 'SPLIT',
+        note: 'Should not settle',
+      }),
+    (err) => err.code === 'sample_preview_readonly'
+  );
+
+  assert.strictEqual(calls.payout, 0);
+  assert.strictEqual(calls.refund, 0);
+  assert.strictEqual(calls.deposit, 0);
+  assert.strictEqual(state.dispute.status, 'OPEN');
+  assert.strictEqual(state.project.status, 'DISPUTED');
+
+  const hidden = await service.listDisputes({ status: 'OPEN' });
+  assert.strictEqual(hidden.disputes.length, 0);
+
+  state.project.description = 'Real walkthrough project';
+  const live = await service.listDisputes({ status: 'OPEN' });
+  assert.strictEqual(live.disputes.length, 1);
+  assert.strictEqual(live.disputes[0].id, 'disp-1');
+}
+
 async function run() {
   await testRaiseThenSplitOnce();
   await testReleaseMarksPaidAndForfeitDeposit();
   await testEvidenceContents();
+  await testSamplePreviewDoesNotMoveMoney();
   console.log('dispute service tests passed');
 }
 

@@ -439,6 +439,28 @@
           <pre class="log" id="log-counselor" hidden></pre>
         </div>
       </section>
+
+      <!-- AGENCY PREVIEW -->
+      <section class="panel" id="panel-agency" data-step="agency">
+        <div class="step-frame agency-frame">
+          <p class="step-kicker">Roadmap preview</p>
+          <h2>Agency (preview)</h2>
+          <p class="agency-banner" role="status">
+            Agency dashboard - preview. Sample data for demo; white-label and multi-seat billing are on the roadmap.
+          </p>
+          <p class="step-lead">
+            Escrow eSports Studio, read only. Sample rows are marked Sample. Sarah and Rohan projects are marked Live when they exist. This screen does not move money.
+          </p>
+          <p class="coming-soon">White-label: coming soon.</p>
+          <div class="action-row">
+            <button type="button" class="btn primary" id="btn-load-agency">Load demo agency</button>
+          </div>
+          <p class="field-hint" id="agency-seed-note"></p>
+          <div id="agency-body">
+            <p class="field-hint">Press Load demo agency to fill the sample roster. Live projects appear here on their own.</p>
+          </div>
+        </div>
+      </section>
     </main>
 
     <dialog id="exit-dialog">
@@ -462,6 +484,7 @@
     </footer>
 
     <script src="/depositPanel.js"></script>
+    <script src="/agencyPanel.js"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>
