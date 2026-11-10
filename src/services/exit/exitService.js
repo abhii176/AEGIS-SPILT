@@ -12,6 +12,12 @@ const {
   sumCapturedVaultCents,
 } = require('../../lib/exitMath');
 const { assertExitAllowed } = require('../../lib/disputeMath');
+const {
+  usableCaptureId,
+  isPaypalResourceNotFound,
+  isDuplicatePayoutBatch,
+  toFriendlyPaypalError,
+} = require('../paypal/captureIds');
 
 /**
  * Exit / cancellation orchestration — mutual, client one-sided, freelancer walk-away.
@@ -163,9 +169,83 @@ function createExitService({
     return { alreadyExited: false, preview: previewForPath(project, path), project };
   }
 
+  function availableFundCents(fund) {
+    const already = Number(fund?.refundedCents) || 0;
+    return Math.max(0, (Number(fund?.amountCents) || 0) - already);
+  }
+
+  /**
+   * Confirm a stored id is a PayPal capture, not an order id or a missing payment.
+   * Updates the row when the order lookup reveals the real capture id.
+   */
+  async function prepareCaptureId(row, modelName) {
+    if (!row) return null;
+    const current = row.paypalCaptureId || null;
+    const orderId = row.paypalOrderId || null;
+
+    if (paypal.isMock()) {
+      const mockId = usableCaptureId({ captureId: current, orderId });
+      return mockId;
+    }
+
+    if (typeof paypal.resolveRefundableCapture !== 'function') {
+      return usableCaptureId({ captureId: current, orderId });
+    }
+
+    let resolved;
+    try {
+      resolved = await paypal.resolveRefundableCapture({ captureId: current, orderId });
+    } catch (err) {
+      if (isPaypalResourceNotFound(err)) return null;
+      throw toFriendlyPaypalError(err);
+    }
+
+    const next = usableCaptureId({
+      captureId: resolved?.captureId || null,
+      orderId,
+    });
+    if (!next) return null;
+    if (next !== current) {
+      row.paypalCaptureId = next;
+      const model = db[modelName];
+      if (model && typeof model.update === 'function' && row.id) {
+        await model.update({
+          where: { id: row.id },
+          data: { paypalCaptureId: next },
+        });
+      }
+    }
+    return next;
+  }
+
+  /**
+   * How much of the vault PayPal can actually move.
+   * Uncaptured orders, order ids stored as capture ids, and unknown captures contribute 0.
+   */
+  async function assessVaultFunding(project) {
+    const funds = (project.vaultFunds || [])
+      .filter(
+        (fund) =>
+          fund.status === 'CAPTURED' &&
+          availableFundCents(fund) > 0 &&
+          (fund.paypalCaptureId || fund.paypalOrderId)
+      )
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    const ready = [];
+    for (const fund of funds) {
+      const captureId = await prepareCaptureId(fund, 'vaultFund');
+      if (!captureId) continue;
+      ready.push(fund);
+    }
+    const movableCents = ready.reduce((sum, fund) => sum + availableFundCents(fund), 0);
+    return { funded: movableCents > 0, movableCents, funds: ready };
+  }
+
   /**
    * Refund remaining vault to client across CAPTURED funds (oldest first).
    * Tracks refundedCents on each VaultFund for idempotency.
+   * A missing capture is skipped — it is not a thrown PayPal error.
    */
   async function refundVaultToClient({ project, amountCents }) {
     let left = Math.max(0, Number(amountCents) || 0);
@@ -173,23 +253,55 @@ function createExitService({
     if (left <= 0) return refunds;
 
     const funds = (project.vaultFunds || [])
-      .filter((f) => f.status === 'CAPTURED' && f.paypalCaptureId)
+      .filter(
+        (f) => f.status === 'CAPTURED' && (f.paypalCaptureId || f.paypalOrderId)
+      )
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+    let sawMissingCapture = false;
 
     for (const fund of funds) {
       if (left <= 0) break;
       const already = Number(fund.refundedCents) || 0;
-      const available = Math.max(0, fund.amountCents - already);
+      const available = availableFundCents(fund);
       if (available <= 0) continue;
+      const captureId = await prepareCaptureId(fund, 'vaultFund');
+      if (!captureId) {
+        sawMissingCapture = true;
+        refunds.push({
+          vaultFundId: fund.id,
+          captureId: fund.paypalCaptureId || null,
+          skipped: true,
+          reason: 'not_captured',
+          amountCents: 0,
+        });
+        continue;
+      }
       const slice = Math.min(available, left);
       const currency = fund.currency || 'USD';
 
-      const result = await paypal.refundCapture({
-        captureId: fund.paypalCaptureId,
-        amountCents: slice,
-        currency,
-        note: `Aegis-Split exit refund: ${project.title}`.slice(0, 255),
-      });
+      let result;
+      try {
+        result = await paypal.refundCapture({
+          captureId,
+          amountCents: slice,
+          currency,
+          note: `Aegis-Split exit refund: ${project.title}`.slice(0, 255),
+        });
+      } catch (err) {
+        if (isPaypalResourceNotFound(err) || toFriendlyPaypalError(err).code === 'escrow_not_funded') {
+          sawMissingCapture = true;
+          refunds.push({
+            vaultFundId: fund.id,
+            captureId,
+            skipped: true,
+            reason: 'resource_not_found',
+            amountCents: 0,
+          });
+          continue;
+        }
+        throw toFriendlyPaypalError(err);
+      }
 
       const refundIds = Array.isArray(fund.paypalRefundIds) ? [...fund.paypalRefundIds] : [];
       if (result.refundId) refundIds.push(result.refundId);
@@ -201,10 +313,11 @@ function createExitService({
           paypalRefundIds: refundIds,
         },
       });
+      fund.refundedCents = already + slice;
 
       refunds.push({
         vaultFundId: fund.id,
-        captureId: fund.paypalCaptureId,
+        captureId,
         refundId: result.refundId,
         amountCents: slice,
         mock: paypal.isMock(),
@@ -213,15 +326,24 @@ function createExitService({
     }
 
     if (left > 0 && !paypal.isMock()) {
-      // Not enough refundable capture balance — record shortfall for ops.
-      refunds.push({ shortfallCents: left, note: 'capture_refund_shortfall' });
-    } else if (left > 0 && paypal.isMock()) {
+      refunds.push({
+        shortfallCents: left,
+        note: sawMissingCapture ? 'capture_not_found' : 'capture_refund_shortfall',
+      });
+    } else if (left > 0 && paypal.isMock() && !sawMissingCapture) {
       // Mock: still account for planned refund even if capture rows missing
       refunds.push({
         refundId: `MOCK-REFUND-SHORTFALL-${project.id}`,
         amountCents: left,
         mock: true,
         note: 'mock_ledger_only',
+      });
+    } else if (left > 0 && paypal.isMock() && sawMissingCapture) {
+      refunds.push({
+        shortfallCents: left,
+        skipped: true,
+        reason: 'not_captured',
+        note: 'capture_not_found',
       });
     }
 
@@ -237,15 +359,27 @@ function createExitService({
       err.code = 'payout_email_missing';
       throw err;
     }
-    return paypal.createPayout({
-      amountCents,
-      currency: currency || env.defaultMilestoneCurrency || 'USD',
-      receiverEmail: receiver,
-      senderBatchId,
-      senderItemId,
-      note,
-      emailSubject: 'Aegis-Split exit transfer',
-    });
+    try {
+      return await paypal.createPayout({
+        amountCents,
+        currency: currency || env.defaultMilestoneCurrency || 'USD',
+        receiverEmail: receiver,
+        senderBatchId,
+        senderItemId,
+        note,
+        emailSubject: 'Aegis-Split exit transfer',
+      });
+    } catch (err) {
+      if (isDuplicatePayoutBatch(err)) {
+        return {
+          payoutBatchId: senderBatchId,
+          payoutItemId: senderItemId,
+          batchStatus: 'DUPLICATE',
+          duplicate: true,
+        };
+      }
+      throw toFriendlyPaypalError(err);
+    }
   }
 
   async function settleDeposit({ project, plan }) {
@@ -262,9 +396,16 @@ function createExitService({
     }
 
     const deposit =
-      project.freelancerDeposits.find((d) => d.status === 'CAPTURED') ||
-      project.freelancerDeposits[0] ||
-      null;
+      (project.freelancerDeposits || []).find((d) => d.status === 'CAPTURED') || null;
+    const depositCaptureId = await prepareCaptureId(deposit, 'freelancerDeposit');
+    if (!deposit || !depositCaptureId) {
+      return {
+        depositStatus: project.depositStatus,
+        payout: null,
+        skipped: true,
+        reason: 'deposit_not_captured',
+      };
+    }
 
     if (plan.depositDisposition === 'RETURNED') {
       const email =
@@ -791,6 +932,7 @@ function createExitService({
     refundVaultToClient,
     payoutAmount,
     settleDeposit,
+    assessVaultFunding,
   };
 }
 

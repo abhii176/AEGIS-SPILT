@@ -1,7 +1,10 @@
 const assert = require('assert');
 const { createDisputeService } = require('./disputeService');
+const { createExitService } = require('../exit/exitService');
+const { createPaypalService } = require('../paypal');
+const { ESCROW_NEVER_FUNDED_MESSAGE } = require('../paypal/captureIds');
 
-function makeHarness() {
+function makeHarness({ paypal = null } = {}) {
   const state = {
     project: {
       id: 'proj-1',
@@ -182,6 +185,22 @@ function makeHarness() {
         return { count };
       },
     },
+    vaultFund: {
+      update: async ({ where, data }) => {
+        const fund = state.project.vaultFunds.find((row) => row.id === where.id);
+        if (!fund) return null;
+        Object.assign(fund, data);
+        return { ...fund };
+      },
+    },
+    freelancerDeposit: {
+      update: async ({ where, data }) => {
+        const deposit = state.project.freelancerDeposits.find((row) => row.id === where.id);
+        if (!deposit) return null;
+        Object.assign(deposit, data);
+        return { ...deposit };
+      },
+    },
     chatMessage: {
       findMany: async () => state.messages.map((m) => ({ ...m, sender: { ...m.sender } })),
     },
@@ -194,25 +213,28 @@ function makeHarness() {
     $transaction: async (fn) => fn(db),
   };
 
-  const exit = {
-    payoutAmount: async () => {
-      calls.payout += 1;
-      return { payoutBatchId: 'BATCH-DISP', payoutItemId: 'ITEM-DISP', raw: { mock: true } };
-    },
-    refundVaultToClient: async ({ amountCents }) => {
-      calls.refund += 1;
-      return [{ refundId: 'RF-1', amountCents }];
-    },
-    settleDeposit: async ({ plan }) => {
-      calls.deposit += 1;
-      calls.depositPlan = plan;
-      state.project.depositStatus = plan.depositDisposition === 'FORFEITED' ? 'FORFEITED' : 'RETURNED';
-      return {
-        depositStatus: state.project.depositStatus,
-        payout: { payoutBatchId: 'DEP-1', payoutItemId: 'DEP-ITEM' },
+  const exit = paypal
+    ? createExitService({ db, paypal, notifications: {} })
+    : {
+        payoutAmount: async () => {
+          calls.payout += 1;
+          return { payoutBatchId: 'BATCH-DISP', payoutItemId: 'ITEM-DISP', raw: { mock: true } };
+        },
+        refundVaultToClient: async ({ amountCents }) => {
+          calls.refund += 1;
+          return [{ refundId: 'RF-1', amountCents }];
+        },
+        settleDeposit: async ({ plan }) => {
+          calls.deposit += 1;
+          calls.depositPlan = plan;
+          state.project.depositStatus =
+            plan.depositDisposition === 'FORFEITED' ? 'FORFEITED' : 'RETURNED';
+          return {
+            depositStatus: state.project.depositStatus,
+            payout: { payoutBatchId: 'DEP-1', payoutItemId: 'DEP-ITEM' },
+          };
+        },
       };
-    },
-  };
 
   const notifications = {
     notifyDisputeOpened: async () => ({ created: [{}] }),
@@ -404,11 +426,329 @@ async function testSamplePreviewDoesNotMoveMoney() {
   assert.strictEqual(live.disputes[0].id, 'disp-1');
 }
 
+function openDispute(state, extra = {}) {
+  state.project.status = 'DISPUTED';
+  state.dispute = {
+    id: 'disp-1',
+    projectId: 'proj-1',
+    status: 'OPEN',
+    reason: 'The PayPal payment never finished',
+    idempotencyKey: 'dispute:proj-1',
+    freelancerAtFault: false,
+    milestoneId: 'ms-1',
+    ...extra,
+  };
+}
+
+function resourceNotFoundError() {
+  const err = new Error('The specified resource does not exist.');
+  err.status = 404;
+  err.code = 'paypal_api_error';
+  err.details = {
+    name: 'RESOURCE_NOT_FOUND',
+    message: 'The specified resource does not exist.',
+    debug_id: 'secret-debug-id',
+    details: [{ issue: 'INVALID_RESOURCE_ID' }],
+  };
+  return err;
+}
+
+async function testUnfundedDecisionRecordsWithoutPaypal() {
+  const { service, state } = makeHarness();
+  state.project.vaultFunds[0].status = 'ORDER_CREATED';
+  state.project.vaultFunds[0].paypalCaptureId = null;
+  state.project.vaultFunds[0].paypalOrderId = 'ORDER-UNFUNDED';
+  state.project.milestones[0].status = 'FUNDED';
+
+  await assert.rejects(
+    () =>
+      service.raiseDispute({
+        projectId: 'proj-1',
+        userId: 'sarah',
+        milestoneId: 'ms-1',
+        reason: 'The client never finished PayPal',
+      }),
+    (err) =>
+      err.code === 'escrow_not_captured' &&
+      err.message.includes('nothing to dispute yet') &&
+      !err.message.includes('RESOURCE_NOT_FOUND')
+  );
+  assert.strictEqual(state.dispute, null);
+  assert.strictEqual(state.project.status, 'ACTIVE');
+
+  const seen = { refund: 0, payout: 0 };
+  const paypal = {
+    isMock: () => false,
+    resolveRefundableCapture: async () => {
+      throw new Error('resolve should not run for an uncaptured order');
+    },
+    refundCapture: async () => {
+      seen.refund += 1;
+      throw resourceNotFoundError();
+    },
+    createPayout: async () => {
+      seen.payout += 1;
+      throw resourceNotFoundError();
+    },
+  };
+  const live = makeHarness({ paypal });
+  live.state.project.vaultFunds = [
+    {
+      id: 'vf-open',
+      status: 'ORDER_CREATED',
+      amountCents: 30000,
+      refundedCents: 0,
+      currency: 'USD',
+      paypalOrderId: 'ORDER-UNFUNDED',
+      paypalCaptureId: null,
+      createdAt: new Date('2026-11-09T00:00:00Z'),
+    },
+  ];
+  live.state.project.depositStatus = 'PENDING';
+  live.state.project.freelancerDeposits = [];
+  openDispute(live.state);
+
+  const preview = await live.service.previewDecision({
+    disputeId: 'disp-1',
+    decision: 'SPLIT',
+  });
+  assert.strictEqual(preview.escrowCaptured, false);
+  assert.ok(preview.lines.some((line) => line.label.includes('never funded through PayPal')));
+  assert.strictEqual(live.state.dispute.status, 'OPEN');
+
+  const decided = await live.service.decideDispute({
+    disputeId: 'disp-1',
+    decision: 'SPLIT',
+    note: 'Record the split. PayPal never took the money.',
+    decidedByLabel: 'Maya Rao',
+  });
+  assert.strictEqual(decided.dispute.status, 'RESOLVED');
+  assert.strictEqual(decided.dispute.decision, 'SPLIT');
+  assert.strictEqual(decided.notice, ESCROW_NEVER_FUNDED_MESSAGE);
+  assert.strictEqual(decided.moneyMoved, false);
+  assert.strictEqual(decided.dispute.transferIds.pending, false);
+  assert.strictEqual(live.state.project.status, 'COMPLETED');
+  assert.strictEqual(seen.refund, 0);
+  assert.strictEqual(seen.payout, 0);
+  assert.ok(!JSON.stringify(decided).includes('specified resource does not exist'));
+
+  const again = await live.service.decideDispute({
+    disputeId: 'disp-1',
+    decision: 'SPLIT',
+    note: 'Record the split. PayPal never took the money.',
+    decidedByLabel: 'Maya Rao',
+  });
+  assert.strictEqual(again.alreadyResolved, true);
+  assert.strictEqual(again.notice, ESCROW_NEVER_FUNDED_MESSAGE);
+  assert.strictEqual(seen.refund, 0);
+  assert.strictEqual(seen.payout, 0);
+}
+
+async function testResourceNotFoundStillRecordsDecision() {
+  const seen = { refund: 0, payout: 0 };
+  const paypal = {
+    isMock: () => false,
+    resolveRefundableCapture: async () => ({ captureId: 'STALE-CAP', verified: true }),
+    refundCapture: async () => {
+      seen.refund += 1;
+      throw resourceNotFoundError();
+    },
+    createPayout: async () => {
+      seen.payout += 1;
+      throw resourceNotFoundError();
+    },
+  };
+  const { service, state } = makeHarness({ paypal });
+  state.project.vaultFunds[0].amountCents = 30000;
+  state.project.vaultFunds[0].paypalCaptureId = 'STALE-CAP';
+  state.project.vaultFunds[0].paypalOrderId = 'ORDER-1';
+  state.project.depositStatus = 'PENDING';
+  state.project.freelancerDeposits = [];
+  openDispute(state);
+
+  const preview = await service.previewDecision({ disputeId: 'disp-1', decision: 'SPLIT' });
+  assert.strictEqual(preview.plan.freelancerAmountCents, 15000);
+  assert.strictEqual(preview.plan.clientRefundCents, 15000);
+  assert.strictEqual(state.dispute.status, 'OPEN');
+
+  const decided = await service.decideDispute({
+    disputeId: 'disp-1',
+    decision: 'SPLIT',
+    note: 'Split the vault that PayPal does not actually have.',
+    decidedByLabel: 'Maya Rao',
+  });
+  const body = JSON.stringify(decided);
+  assert.strictEqual(decided.dispute.status, 'RESOLVED');
+  assert.strictEqual(decided.notice, ESCROW_NEVER_FUNDED_MESSAGE);
+  assert.strictEqual(decided.moneyMoved, false);
+  assert.strictEqual(decided.dispute.transferIds.paypalIssue, 'RESOURCE_NOT_FOUND');
+  assert.strictEqual(decided.dispute.transferIds.pending, false);
+  assert.ok(!body.includes('specified resource does not exist'));
+  assert.ok(!body.includes('secret-debug-id'));
+  assert.ok(!body.includes('INVALID_RESOURCE_ID'));
+  assert.strictEqual(seen.refund, 1);
+  assert.strictEqual(seen.payout, 0);
+
+  for (const decision of ['RELEASE_TO_FREELANCER', 'REFUND_CLIENT']) {
+    const calls = { refund: 0, payout: 0 };
+    const gate = {
+      isMock: () => false,
+      resolveRefundableCapture: async () => ({ captureId: null, verified: false, reason: 'not_captured' }),
+      refundCapture: async () => {
+        calls.refund += 1;
+        throw resourceNotFoundError();
+      },
+      createPayout: async () => {
+        calls.payout += 1;
+        throw resourceNotFoundError();
+      },
+    };
+    const next = makeHarness({ paypal: gate });
+    next.state.project.vaultFunds[0].amountCents = 30000;
+    next.state.project.vaultFunds[0].paypalCaptureId = 'STALE-CAP';
+    next.state.project.vaultFunds[0].paypalOrderId = 'ORDER-1';
+    next.state.project.depositStatus = 'PENDING';
+    next.state.project.freelancerDeposits = [];
+    openDispute(next.state);
+    const result = await next.service.decideDispute({
+      disputeId: 'disp-1',
+      decision,
+      note: `Record ${decision} without a capture.`,
+      decidedByLabel: 'Maya Rao',
+    });
+    assert.strictEqual(result.dispute.status, 'RESOLVED', decision);
+    assert.strictEqual(result.notice, ESCROW_NEVER_FUNDED_MESSAGE, decision);
+    assert.strictEqual(calls.refund, 0, decision);
+    assert.strictEqual(calls.payout, 0, decision);
+    assert.ok(!JSON.stringify(result).includes('specified resource does not exist'));
+  }
+}
+
+async function testOrderIdIsReplacedWithCaptureIdBeforeRefund() {
+  const seen = { refund: [] };
+  const paypal = {
+    isMock: () => false,
+    resolveRefundableCapture: async () => ({ captureId: 'CAP-REAL', verified: true }),
+    refundCapture: async (args) => {
+      seen.refund.push(args);
+      return { refundId: 'RF-REAL', status: 'COMPLETED' };
+    },
+    createPayout: async (args) => ({
+      payoutBatchId: `BATCH-${args.senderBatchId}`,
+      payoutItemId: 'ITEM-1',
+    }),
+  };
+  const { service, state } = makeHarness({ paypal });
+  state.project.vaultFunds[0].amountCents = 30000;
+  state.project.vaultFunds[0].paypalOrderId = 'ORDER-1';
+  state.project.vaultFunds[0].paypalCaptureId = 'ORDER-1';
+  state.project.depositStatus = 'PENDING';
+  state.project.freelancerDeposits = [];
+  openDispute(state);
+
+  const decided = await service.decideDispute({
+    disputeId: 'disp-1',
+    decision: 'REFUND_CLIENT',
+    note: 'Refund the capture, not the order id.',
+    decidedByLabel: 'Maya Rao',
+  });
+
+  assert.strictEqual(seen.refund.length, 1);
+  assert.strictEqual(seen.refund[0].captureId, 'CAP-REAL');
+  assert.strictEqual(seen.refund[0].amountCents, 30000);
+  assert.strictEqual(state.project.vaultFunds[0].paypalCaptureId, 'CAP-REAL');
+  assert.strictEqual(decided.dispute.status, 'RESOLVED');
+  assert.strictEqual(decided.moneyMoved, true);
+  assert.strictEqual(decided.notice, null);
+  assert.strictEqual(decided.dispute.transferIds.vaultRefunds[0].refundId, 'RF-REAL');
+}
+
+async function testFundedDecisionsUseCaptureId() {
+  async function run(decision, note) {
+    const seen = { refund: [], payout: [] };
+    const inner = createPaypalService({ mock: true, clientId: 'test-id', clientSecret: 'test-secret' });
+    const paypal = {
+      isMock: () => true,
+      resolveRefundableCapture: (args) => inner.resolveRefundableCapture(args),
+      refundCapture: async (args) => {
+        seen.refund.push(args);
+        return inner.refundCapture(args);
+      },
+      createPayout: async (args) => {
+        seen.payout.push(args);
+        return inner.createPayout(args);
+      },
+    };
+    const { service, state } = makeHarness({ paypal });
+    state.project.vaultFunds[0].amountCents = 30001;
+    state.project.vaultFunds[0].paypalCaptureId = 'CAP-REAL';
+    state.project.vaultFunds[0].paypalOrderId = 'ORDER-REAL';
+    state.project.milestones[0].amountCents = 30001;
+    state.project.freelancerDeposits[0].paypalCaptureId = 'CAP-DEP';
+    state.project.freelancerDeposits[0].paypalOrderId = 'ORDER-DEP';
+    openDispute(state);
+    const decided = await service.decideDispute({
+      disputeId: 'disp-1',
+      decision,
+      note,
+      decidedByLabel: 'Maya Rao',
+    });
+    return { decided, seen, state };
+  }
+
+  const split = await run('SPLIT', 'Even split. Odd cent stays with the client. Deposit returns.');
+  assert.strictEqual(split.decided.plan.freelancerAmountCents, 15000);
+  assert.strictEqual(split.decided.plan.clientRefundCents, 15001);
+  assert.strictEqual(
+    split.decided.plan.freelancerAmountCents + split.decided.plan.clientRefundCents,
+    30001
+  );
+  assert.strictEqual(split.decided.plan.depositDisposition, 'RETURNED');
+  assert.strictEqual(split.decided.notice, null);
+  assert.strictEqual(split.decided.moneyMoved, true);
+  assert.strictEqual(split.seen.refund.length, 1);
+  assert.strictEqual(split.seen.refund[0].captureId, 'CAP-REAL');
+  assert.strictEqual(split.seen.refund[0].amountCents, 15001);
+  assert.deepStrictEqual(
+    split.seen.payout.map((row) => row.amountCents).sort((a, b) => a - b),
+    [2500, 15000]
+  );
+  assert.ok(split.seen.payout.some((row) => row.senderBatchId === 'deposit-return-proj-1'));
+  assert.strictEqual(split.state.project.depositStatus, 'RETURNED');
+  assert.strictEqual(split.state.dispute.transferIds.pending, false);
+
+  const release = await run('RELEASE_TO_FREELANCER', 'Release the funded milestone to Rohan.');
+  assert.strictEqual(release.decided.plan.freelancerAmountCents, 30001);
+  assert.strictEqual(release.decided.plan.clientRefundCents, 0);
+  assert.strictEqual(release.decided.plan.depositDisposition, 'RETURNED');
+  assert.strictEqual(release.seen.refund.length, 0);
+  assert.ok(release.seen.payout.some((row) => row.amountCents === 30001 && row.receiverEmail === 'rohan@example.com'));
+  assert.ok(release.seen.payout.some((row) => row.senderBatchId === 'deposit-return-proj-1'));
+  assert.strictEqual(release.state.project.milestones[0].status, 'PAID');
+  assert.ok(release.state.project.milestones[0].paypalPayoutBatchId);
+
+  const refund = await run('REFUND_CLIENT', 'Refund Sarah. Rohan was not at fault.');
+  assert.strictEqual(refund.decided.plan.freelancerAmountCents, 0);
+  assert.strictEqual(refund.decided.plan.clientRefundCents, 30001);
+  assert.strictEqual(refund.decided.plan.depositDisposition, 'RETURNED');
+  assert.strictEqual(refund.seen.refund.length, 1);
+  assert.strictEqual(refund.seen.refund[0].captureId, 'CAP-REAL');
+  assert.strictEqual(refund.seen.refund[0].amountCents, 30001);
+  assert.strictEqual(refund.seen.payout.length, 1);
+  assert.strictEqual(refund.seen.payout[0].amountCents, 2500);
+  assert.strictEqual(refund.state.project.status, 'CANCELLED');
+  assert.strictEqual(refund.state.project.depositStatus, 'RETURNED');
+}
+
 async function run() {
   await testRaiseThenSplitOnce();
   await testReleaseMarksPaidAndForfeitDeposit();
   await testEvidenceContents();
   await testSamplePreviewDoesNotMoveMoney();
+  await testUnfundedDecisionRecordsWithoutPaypal();
+  await testResourceNotFoundStillRecordsDecision();
+  await testOrderIdIsReplacedWithCaptureIdBeforeRefund();
+  await testFundedDecisionsUseCaptureId();
   console.log('dispute service tests passed');
 }
 

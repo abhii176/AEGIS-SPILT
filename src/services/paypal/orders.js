@@ -1,4 +1,10 @@
 const { createPaypalClient } = require('./client');
+const {
+  captureIdFromPaypalBody,
+  usableCaptureId,
+  isPaypalResourceNotFound,
+  toFriendlyPaypalError,
+} = require('./captureIds');
 
 /**
  * Convert integer cents → PayPal amount string (e.g. 25000 → "250.00").
@@ -21,12 +27,8 @@ function pickApprovalUrl(order) {
 }
 
 function pickCaptureId(captureResponse) {
-  const units = captureResponse?.purchase_units || [];
-  for (const unit of units) {
-    const captures = unit?.payments?.captures || [];
-    if (captures[0]?.id) return captures[0].id;
-  }
-  return captureResponse?.id || null;
+  // The order id lives on the response root. Refunds need the nested capture id.
+  return captureIdFromPaypalBody(captureResponse);
 }
 
 /**
@@ -142,12 +144,82 @@ function createOrdersService(client = createPaypalClient()) {
     const captured = await client.request('POST', `/v2/checkout/orders/${orderId}/capture`, {
       body: {},
     });
+    const captureId = usableCaptureId({
+      captureId: pickCaptureId(captured),
+      orderId: captured.id || orderId,
+    });
     return {
       id: captured.id,
       status: captured.status,
-      captureId: pickCaptureId(captured),
+      captureId,
       raw: captured,
     };
+  }
+
+  async function getCapture(captureId) {
+    if (!captureId) return null;
+    if (client.isMock()) {
+      return { id: String(captureId), status: 'COMPLETED', raw: { mock: true, id: captureId } };
+    }
+    try {
+      const capture = await client.request('GET', `/v2/payments/captures/${captureId}`);
+      return {
+        id: capture.id || String(captureId),
+        status: capture.status || null,
+        raw: capture,
+      };
+    } catch (err) {
+      if (isPaypalResourceNotFound(err)) return null;
+      throw toFriendlyPaypalError(err);
+    }
+  }
+
+  /**
+   * Turn a stored order id or stale capture id into a capture PayPal can refund.
+   * Missing, unknown, or not-yet-captured orders resolve to captureId null.
+   */
+  async function resolveRefundableCapture({ captureId = null, orderId = null } = {}) {
+    const distinct = usableCaptureId({ captureId, orderId });
+    if (client.isMock()) {
+      if (distinct) return { captureId: distinct, verified: true };
+      return { captureId: null, verified: false, reason: 'not_captured' };
+    }
+
+    if (distinct) {
+      const capture = await getCapture(distinct);
+      const status = String(capture?.status || '').toUpperCase();
+      const unusable = ['DECLINED', 'FAILED', 'VOIDED', 'DENIED'].includes(status);
+      if (capture?.id && !unusable) {
+        return { captureId: capture.id, verified: true, status: capture.status || null };
+      }
+    }
+
+    if (orderId) {
+      let order;
+      try {
+        order = await getOrder(orderId);
+      } catch (err) {
+        if (isPaypalResourceNotFound(err)) {
+          return { captureId: null, verified: false, reason: 'not_captured' };
+        }
+        throw toFriendlyPaypalError(err);
+      }
+      const fromOrder = usableCaptureId({
+        captureId: pickCaptureId(order.raw) || pickCaptureId(order),
+        orderId,
+      });
+      if (fromOrder) {
+        return { captureId: fromOrder, verified: true, orderStatus: order.status || null };
+      }
+      return {
+        captureId: null,
+        verified: false,
+        reason: 'not_captured',
+        orderStatus: order.status || null,
+      };
+    }
+
+    return { captureId: null, verified: false, reason: 'not_captured' };
   }
 
   /**
@@ -203,6 +275,8 @@ function createOrdersService(client = createPaypalClient()) {
     createOrder,
     getOrder,
     captureOrder,
+    getCapture,
+    resolveRefundableCapture,
     refundCapture,
     centsToAmountValue,
     pickApprovalUrl,

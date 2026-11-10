@@ -14,9 +14,11 @@ function testCentsToAmount() {
 
 function testPickCaptureId() {
   const id = pickCaptureId({
+    id: 'ORDER-1',
     purchase_units: [{ payments: { captures: [{ id: 'CAP-123' }] } }],
   });
   assert.strictEqual(id, 'CAP-123');
+  assert.strictEqual(pickCaptureId({ id: 'ORDER-1', status: 'COMPLETED' }), null);
 }
 
 async function testExplicitMockFalseNeverSilentMocks() {
@@ -520,10 +522,116 @@ function testReleasableStatuses() {
   assert.ok(!RELEASABLE_STATUSES.has('CANCELLED'));
 }
 
+async function testResolveUsesCaptureIdNotOrderId() {
+  const { createPaypalClient } = require('./client');
+  const calls = [];
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes('/oauth2/token')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ access_token: 'tok', expires_in: 300 }),
+        text: async () => JSON.stringify({ access_token: 'tok', expires_in: 300 }),
+      };
+    }
+    if (String(url).includes('/v2/payments/captures/ORDER-1')) {
+      return {
+        ok: false,
+        status: 404,
+        text: async () =>
+          JSON.stringify({
+            name: 'RESOURCE_NOT_FOUND',
+            message: 'The specified resource does not exist.',
+            debug_id: 'do-not-leak',
+          }),
+      };
+    }
+    if (String(url).includes('/v2/checkout/orders/ORDER-1')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            id: 'ORDER-1',
+            status: 'COMPLETED',
+            purchase_units: [{ payments: { captures: [{ id: 'CAP-REAL' }] } }],
+          }),
+      };
+    }
+    if (String(url).includes('/v2/checkout/orders/ORDER-OPEN')) {
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ id: 'ORDER-OPEN', status: 'CREATED', purchase_units: [] }),
+      };
+    }
+    return { ok: false, status: 404, text: async () => JSON.stringify({ name: 'RESOURCE_NOT_FOUND', message: 'The specified resource does not exist.' }) };
+  };
+
+  const client = createPaypalClient({
+    clientId: 'test-client',
+    clientSecret: 'test-secret',
+    mode: 'sandbox',
+    mock: false,
+    fetchImpl,
+  });
+  const orders = createOrdersService(client);
+  const resolved = await orders.resolveRefundableCapture({ captureId: 'ORDER-1', orderId: 'ORDER-1' });
+  assert.strictEqual(resolved.captureId, 'CAP-REAL');
+  assert.ok(calls.some((url) => url.includes('/v2/checkout/orders/ORDER-1')));
+  assert.ok(!calls.some((url) => url.includes('/v2/payments/captures/ORDER-1/refund')));
+
+  const open = await orders.resolveRefundableCapture({ captureId: null, orderId: 'ORDER-OPEN' });
+  assert.strictEqual(open.captureId, null);
+  assert.strictEqual(open.reason, 'not_captured');
+
+  const missing = await orders.resolveRefundableCapture({ captureId: 'GONE', orderId: null });
+  assert.strictEqual(missing.captureId, null);
+  assert.strictEqual(missing.reason, 'not_captured');
+}
+
+async function testCompletedOrderWithoutCaptureIsNotStoredAsOrderId() {
+  const db = makeEscrowDbMock();
+  const paypal = {
+    isMock: () => true,
+    createOrder: async () => ({
+      id: 'ORDER-BARE',
+      status: 'CREATED',
+      approvalUrl: 'https://sandbox.paypal.com/approve/ORDER-BARE',
+    }),
+    getOrder: async () => ({
+      id: 'ORDER-BARE',
+      status: 'COMPLETED',
+      raw: { id: 'ORDER-BARE', status: 'COMPLETED' },
+    }),
+    captureOrder: async () => {
+      throw new Error('should not recapture');
+    },
+  };
+  const escrow = createEscrowService({ paypal, db });
+  await escrow.fundProjectVault({
+    userId: 'user-sarah',
+    projectId: 'proj-1',
+    autoCapture: false,
+    returnUrl: 'http://localhost:3000/api/vault/paypal/return',
+    cancelUrl: 'http://localhost:3000/api/vault/paypal/cancel',
+  });
+  await assert.rejects(
+    () => escrow.completeVaultAfterApproval({ orderId: 'ORDER-BARE' }),
+    (err) => err.code === 'capture_id_missing'
+  );
+  const fund = [...db._funds.values()][0];
+  assert.notStrictEqual(fund.status, 'CAPTURED');
+  assert.notStrictEqual(fund.paypalCaptureId, 'ORDER-BARE');
+}
+
 async function run() {
   testCentsToAmount();
   testPickCaptureId();
   testReleasableStatuses();
+  await testResolveUsesCaptureIdNotOrderId();
+  await testCompletedOrderWithoutCaptureIsNotStoredAsOrderId();
   await testExplicitMockFalseNeverSilentMocks();
   await testMockOrdersAndPayouts();
   await testHttpOrdersWithFetchMock();

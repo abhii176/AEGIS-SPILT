@@ -76,7 +76,8 @@ function raiseDisputeTransition({
         ok: false,
         code: 'milestone_not_funded',
         status: 409,
-        message: `Milestone status ${milestone.status} is not a funded dispute`,
+        message:
+          "This milestone's escrow was never funded through PayPal, so there is nothing to dispute yet.",
       };
     }
   } else {
@@ -86,7 +87,8 @@ function raiseDisputeTransition({
         ok: false,
         code: 'nothing_funded',
         status: 409,
-        message: 'Raise a dispute only after a milestone is funded',
+        message:
+          "This milestone's escrow was never funded through PayPal, so there is nothing to dispute yet.",
       };
     }
   }

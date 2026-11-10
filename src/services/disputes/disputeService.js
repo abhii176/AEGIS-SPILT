@@ -22,6 +22,11 @@ const {
   isSampleProject,
   assertAgencySampleReadonly,
 } = require('../../lib/agencyDashboard');
+const {
+  ESCROW_NEVER_FUNDED_MESSAGE,
+  ESCROW_NOT_READY_NOTE,
+  toFriendlyPaypalError,
+} = require('../paypal/captureIds');
 
 const OPEN_MILESTONE_FILTER = { notIn: ['PAID', 'RELEASED', 'CANCELLED'] };
 
@@ -92,6 +97,34 @@ function createDisputeService({
     });
   }
 
+  function describeEscrowFunding(project, milestoneId = null) {
+    const funds = (project.vaultFunds || []).filter((fund) => {
+      if (fund.status !== 'CAPTURED') return false;
+      const available = Math.max(
+        0,
+        (Number(fund.amountCents) || 0) - (Number(fund.refundedCents) || 0)
+      );
+      if (available <= 0) return false;
+      if (milestoneId && fund.milestoneId && fund.milestoneId !== milestoneId) return false;
+      return true;
+    });
+    const ready = funds.some(
+      (fund) => fund.paypalCaptureId && fund.paypalCaptureId !== fund.paypalOrderId
+    );
+    let fundingNote = null;
+    if (!funds.length) {
+      fundingNote = ESCROW_NOT_READY_NOTE;
+    } else if (!ready) {
+      fundingNote =
+        'This escrow is marked funded, but PayPal has no separate capture id yet. Confirming checks PayPal before any money moves.';
+    }
+    return {
+      captured: funds.length > 0,
+      ready,
+      fundingNote,
+    };
+  }
+
   function planFor(project, input) {
     const snap = vaultSnapshot(project);
     const plan = buildDisputeMoneyPlan({
@@ -153,6 +186,14 @@ function createDisputeService({
       milestoneId: milestoneKey,
       hasOpenDispute: Boolean(open),
     });
+    if (!describeEscrowFunding(project, milestoneKey).captured) {
+      const err = new Error(
+        "This milestone's escrow was never funded through PayPal, so there is nothing to dispute yet."
+      );
+      err.status = 409;
+      err.code = 'escrow_not_captured';
+      throw err;
+    }
 
     const key = idempotencyKeyFor(project.id);
     let dispute;
@@ -271,6 +312,7 @@ function createDisputeService({
 
     const snap = vaultSnapshot(project);
     const focusId = dispute?.milestoneId || null;
+    const funding = describeEscrowFunding(project, focusId);
 
     return {
       project: {
@@ -292,6 +334,8 @@ function createDisputeService({
       },
       vault: {
         ...snap,
+        escrowCaptured: funding.ready,
+        fundingNote: funding.fundingNote,
         currency: project.milestones[0]?.currency || env.defaultMilestoneCurrency || 'USD',
       },
       deposit: {
@@ -432,11 +476,17 @@ function createDisputeService({
       disputeStatus: dispute.status,
       plan,
     });
+    const funding = describeEscrowFunding(project, dispute.milestoneId);
+    if (!funding.ready && funding.fundingNote) {
+      lines.push({ to: 'none', label: funding.fundingNote, amountCents: 0 });
+    }
     return {
       disputeId: dispute.id,
       vault: snap,
       plan,
       lines,
+      escrowCaptured: funding.ready,
+      fundingNote: funding.fundingNote,
       requiresNote: true,
     };
   }
@@ -471,24 +521,114 @@ function createDisputeService({
     );
   }
 
+  function refundMovedMoney(vaultRefunds) {
+    return (
+      Array.isArray(vaultRefunds) &&
+      vaultRefunds.some((row) => row && row.refundId && !row.skipped)
+    );
+  }
+
+  function refundBlockedByMissingCapture(vaultRefunds) {
+    if (!Array.isArray(vaultRefunds) || vaultRefunds.length === 0) return false;
+    if (refundMovedMoney(vaultRefunds)) return false;
+    return vaultRefunds.some(
+      (row) =>
+        row &&
+        (row.skipped ||
+          row.reason === 'resource_not_found' ||
+          row.reason === 'not_captured' ||
+          row.reason === 'escrow_not_funded' ||
+          row.note === 'capture_not_found')
+    );
+  }
+
   async function settleClaimed({ project, dispute, plan, lines }) {
     // Close the project before PayPal calls, including when a retry resumes a pending decision.
+    // Milestone status waits until we know whether a payout actually happened.
     await db.project.update({
       where: { id: project.id },
       data: { status: plan.projectStatus },
     });
-    await db.milestone.updateMany({
-      where: {
-        projectId: project.id,
-        status: OPEN_MILESTONE_FILTER,
-      },
-      data: { status: plan.milestoneStatus },
-    });
 
     const prior =
-      dispute.transferIds && typeof dispute.transferIds === 'object' ? dispute.transferIds : {};
+      dispute.transferIds && typeof dispute.transferIds === 'object' ? { ...dispute.transferIds } : {};
 
+    let funding;
+    try {
+      funding =
+        typeof exit.assessVaultFunding === 'function'
+          ? await exit.assessVaultFunding(project)
+          : {
+              funded: plan.remainingVaultCents > 0,
+              movableCents: plan.remainingVaultCents,
+            };
+    } catch (err) {
+      throw toFriendlyPaypalError(err);
+    }
+
+    let escrowFunded = funding.funded;
+    let paypalIssue = prior.paypalIssue || null;
     let freelancerPayout = null;
+    let vaultRefunds = prior.vaultRefunds || null;
+
+    async function remember(partial) {
+      const transferIds = { ...prior, ...partial };
+      const updated = await db.dispute.update({
+        where: { id: dispute.id },
+        data: { transferIds },
+      });
+      Object.assign(prior, transferIds);
+      dispute.transferIds = updated.transferIds;
+      return updated;
+    }
+
+    if (!vaultRefunds && plan.clientRefundCents > 0) {
+      if (!escrowFunded) {
+        vaultRefunds = [
+          {
+            skipped: true,
+            reason: 'escrow_not_funded',
+            amountCents: plan.clientRefundCents,
+          },
+        ];
+      } else {
+        try {
+          vaultRefunds = await exit.refundVaultToClient({
+            project,
+            amountCents: plan.clientRefundCents,
+          });
+        } catch (err) {
+          const friendly = toFriendlyPaypalError(err);
+          if (friendly.code === 'escrow_not_funded') {
+            escrowFunded = false;
+            paypalIssue = 'RESOURCE_NOT_FOUND';
+            vaultRefunds = [
+              {
+                skipped: true,
+                reason: 'resource_not_found',
+                amountCents: plan.clientRefundCents,
+              },
+            ];
+          } else if (friendly !== err || friendly.code === 'paypal_unavailable') {
+            await remember({
+              pending: true,
+              escrowFunded,
+              vaultRefunds: vaultRefunds || null,
+              paypalIssue: friendly.paypalIssue || null,
+            });
+            throw friendly;
+          } else {
+            throw err;
+          }
+        }
+        if (refundBlockedByMissingCapture(vaultRefunds)) {
+          escrowFunded = false;
+          paypalIssue = 'RESOURCE_NOT_FOUND';
+        }
+      }
+      await remember({ pending: true, escrowFunded, vaultRefunds, paypalIssue });
+    }
+
     if (plan.freelancerAmountCents > 0) {
       if (prior.freelancerPayoutBatchId) {
         freelancerPayout = {
@@ -496,39 +636,82 @@ function createDisputeService({
           payoutItemId: prior.freelancerPayoutItemId || null,
           resumed: true,
         };
+      } else if (!escrowFunded) {
+        freelancerPayout = { skipped: true, reason: 'escrow_not_funded' };
+        if (!paypalIssue) paypalIssue = 'RESOURCE_NOT_FOUND';
       } else {
         const email =
           project.freelancer.paypalEmail ||
           env.paypal.payoutEmail ||
           project.freelancer.email;
-        freelancerPayout = await exit.payoutAmount({
-          email,
-          amountCents: plan.freelancerAmountCents,
-          currency: project.milestones[0]?.currency || env.defaultMilestoneCurrency || 'USD',
-          senderBatchId: `dispute-pay-${dispute.id}`,
-          senderItemId: `disp-${dispute.id}`,
-          note: `Counselor decision: ${project.title}`,
-        });
+        const amountCents = Math.min(
+          plan.freelancerAmountCents,
+          Math.max(0, Number(funding.movableCents) || plan.freelancerAmountCents)
+        );
+        try {
+          freelancerPayout = await exit.payoutAmount({
+            email,
+            amountCents,
+            currency: project.milestones[0]?.currency || env.defaultMilestoneCurrency || 'USD',
+            senderBatchId: `dispute-pay-${dispute.id}`,
+            senderItemId: `disp-${dispute.id}`,
+            note: `Counselor decision: ${project.title}`,
+          });
+        } catch (err) {
+          const friendly = toFriendlyPaypalError(err);
+          if (friendly.code === 'escrow_not_funded') {
+            escrowFunded = false;
+            paypalIssue = 'RESOURCE_NOT_FOUND';
+            freelancerPayout = { skipped: true, reason: 'resource_not_found' };
+          } else if (friendly !== err || friendly.code === 'paypal_unavailable') {
+            await remember({
+              pending: true,
+              escrowFunded,
+              vaultRefunds,
+              paypalIssue: friendly.paypalIssue || paypalIssue,
+            });
+            throw friendly;
+          } else {
+            throw err;
+          }
+        }
+        if (freelancerPayout?.payoutBatchId) {
+          await remember({
+            pending: true,
+            freelancerPayoutBatchId: freelancerPayout.payoutBatchId,
+            freelancerPayoutItemId: freelancerPayout.payoutItemId || null,
+          });
+        }
       }
-    }
-
-    let vaultRefunds = prior.vaultRefunds || null;
-    if (!vaultRefunds) {
-      vaultRefunds = await exit.refundVaultToClient({
-        project,
-        amountCents: plan.clientRefundCents,
-      });
     }
 
     let depositResult = { depositStatus: project.depositStatus, payout: null };
     if (!prior.depositSettled) {
-      depositResult = await exit.settleDeposit({
-        project,
-        plan: {
-          depositDisposition: plan.depositDisposition,
-          depositCents: plan.depositCents,
-        },
-      });
+      try {
+        depositResult = await exit.settleDeposit({
+          project,
+          plan: {
+            depositDisposition: plan.depositDisposition,
+            depositCents: plan.depositCents,
+          },
+        });
+      } catch (err) {
+        const friendly = toFriendlyPaypalError(err);
+        if (friendly.code === 'escrow_not_funded') {
+          paypalIssue = paypalIssue || 'RESOURCE_NOT_FOUND';
+          depositResult = {
+            depositStatus: project.depositStatus,
+            payout: null,
+            skipped: true,
+            reason: 'resource_not_found',
+          };
+        } else if (friendly !== err || friendly.code === 'paypal_unavailable') {
+          await remember({ pending: true, escrowFunded, vaultRefunds, paypalIssue });
+          throw friendly;
+        } else {
+          throw err;
+        }
+      }
     } else {
       depositResult = {
         depositStatus: plan.depositDisposition === 'NONE' ? project.depositStatus : plan.depositDisposition,
@@ -539,39 +722,70 @@ function createDisputeService({
       };
     }
 
+    const moneyMoved = Boolean(
+      freelancerPayout?.payoutBatchId ||
+        depositResult.payout?.payoutBatchId ||
+        refundMovedMoney(vaultRefunds)
+    );
+    const depositMoved = Boolean(depositResult.payout?.payoutBatchId);
+    let notice = null;
+    if (!escrowFunded && !moneyMoved) {
+      notice = ESCROW_NEVER_FUNDED_MESSAGE;
+    } else if (!escrowFunded && depositMoved) {
+      notice =
+        "This project's escrow was never funded through PayPal, so there is no vault money to release or refund. The security deposit was sent. The decision was recorded.";
+    } else if (!escrowFunded && moneyMoved) {
+      notice =
+        'PayPal could not move every part of this decision. What did go through is saved, and the decision was recorded.';
+    }
+
     const transferIds = {
       pending: false,
+      escrowFunded,
+      moneyMoved,
+      notice,
+      paypalIssue: paypalIssue || null,
       freelancerPayoutBatchId:
         freelancerPayout?.payoutBatchId || prior.freelancerPayoutBatchId || null,
       freelancerPayoutItemId:
         freelancerPayout?.payoutItemId || prior.freelancerPayoutItemId || null,
+      freelancerPayoutSkipped: Boolean(freelancerPayout?.skipped),
       vaultRefunds,
       depositSettled: true,
+      depositSkipped: Boolean(depositResult.skipped),
       depositBatchId: depositResult.payout?.payoutBatchId || prior.depositBatchId || null,
       depositItemId: depositResult.payout?.payoutItemId || prior.depositItemId || null,
       mock: Boolean(freelancerPayout?.raw?.mock || prior.mock),
     };
 
+    const milestoneStatus =
+      plan.milestoneStatus === 'PAID' && !freelancerPayout?.payoutBatchId
+        ? 'CANCELLED'
+        : plan.milestoneStatus;
+    const payoutFields =
+      milestoneStatus === 'PAID' && freelancerPayout?.payoutBatchId
+        ? {
+            paypalPayoutBatchId: freelancerPayout.payoutBatchId,
+            paypalPayoutItemId: freelancerPayout.payoutItemId || null,
+            payoutEmail: project.freelancer.paypalEmail || project.freelancer.email || null,
+            releasedAt: new Date(),
+          }
+        : {};
+    await db.milestone.updateMany({
+      where: {
+        projectId: project.id,
+        status: OPEN_MILESTONE_FILTER,
+      },
+      data: {
+        status: milestoneStatus,
+        ...payoutFields,
+      },
+    });
+
     const updated = await db.dispute.update({
       where: { id: dispute.id },
       data: { transferIds },
     });
-
-    if (plan.milestoneStatus === 'PAID' && freelancerPayout?.payoutBatchId) {
-      await db.milestone.updateMany({
-        where: {
-          projectId: project.id,
-          status: plan.milestoneStatus,
-        },
-        data: {
-          paypalPayoutBatchId: freelancerPayout.payoutBatchId,
-          paypalPayoutItemId: freelancerPayout.payoutItemId || null,
-          payoutEmail:
-            project.freelancer.paypalEmail || project.freelancer.email || null,
-          releasedAt: new Date(),
-        },
-      });
-    }
 
     const freshProject = await db.project.findUnique({
       where: { id: project.id },
@@ -582,6 +796,7 @@ function createDisputeService({
         project: freshProject,
         dispute: updated,
         plan,
+        notice,
       });
     }
 
@@ -590,6 +805,8 @@ function createDisputeService({
       dispute: publicDispute(updated),
       plan,
       lines,
+      notice,
+      moneyMoved,
       transfers: {
         freelancerPayout,
         vaultRefunds,
@@ -638,6 +855,8 @@ function createDisputeService({
         dispute: publicDispute(dispute),
         plan: stored,
         lines: describeDisputeLines(stored),
+        notice: dispute.transferIds?.notice || null,
+        moneyMoved: dispute.transferIds?.moneyMoved !== false,
       };
     }
 
@@ -694,6 +913,8 @@ function createDisputeService({
         dispute: publicDispute(current),
         plan: stored,
         lines: describeDisputeLines(stored),
+        notice: current?.transferIds?.notice || null,
+        moneyMoved: current?.transferIds?.moneyMoved !== false,
       };
     }
 

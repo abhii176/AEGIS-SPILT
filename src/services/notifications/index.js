@@ -288,15 +288,18 @@ function createNotificationService({ db = prisma } = {}) {
     });
   }
 
-  async function notifyDisputeResolved({ project, dispute, plan }) {
+  async function notifyDisputeResolved({ project, dispute, plan, notice = null }) {
     const decision = plan?.decision || dispute?.decision || 'RESOLVED';
     const freelancer = formatUsd(plan?.freelancerAmountCents ?? dispute?.freelancerAmountCents);
     const client = formatUsd(plan?.clientRefundCents ?? dispute?.clientRefundCents);
     const deposit = plan?.depositDisposition || dispute?.depositDisposition || 'NONE';
+    const message = notice
+      ? `Counselor decided “${project.title}”. ${notice}`
+      : `Counselor decided “${project.title}”: ${decision}. Freelancer ${freelancer}, client refund ${client}, deposit ${deposit}.`;
     return notifyProjectParties({
       project,
       type: TYPES.DISPUTE_RESOLVED,
-      message: `Counselor decided “${project.title}”: ${decision}. Freelancer ${freelancer}, client refund ${client}, deposit ${deposit}.`,
+      message,
       milestoneId: dispute?.milestoneId || null,
       dedupePrefix: `DISPUTE_RESOLVED:${dispute?.id || project.id}`,
     });
