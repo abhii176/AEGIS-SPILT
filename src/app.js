@@ -11,6 +11,7 @@ const mergeRoutes = require('./routes/merge');
 const adminDemoRoutes = require('./routes/adminDemo');
 const webhooksRoutes = require('./routes/webhooks');
 const notificationsRoutes = require('./routes/notifications');
+const disputesRoutes = require('./routes/disputes');
 const { logRequestError, publicErrorBody } = require('./lib/requestErrorLog');
 
 function createApp() {
@@ -67,6 +68,7 @@ function createApp() {
   app.use('/api/vault', vaultRoutes);
   app.use('/api/merge', mergeRoutes);
   app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/disputes', disputesRoutes);
   app.use('/api/admin/demo', adminDemoRoutes);
 
   // Hackathon demo UI (static) — after API so /api/* stays JSON

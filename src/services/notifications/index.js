@@ -12,6 +12,8 @@ const TYPES = Object.freeze({
   DEPOSIT_HELD: 'DEPOSIT_HELD',
   DEPOSIT_RETURNED: 'DEPOSIT_RETURNED',
   DEPOSIT_FORFEITED: 'DEPOSIT_FORFEITED',
+  DISPUTE_OPENED: 'DISPUTE_OPENED',
+  DISPUTE_RESOLVED: 'DISPUTE_RESOLVED',
 });
 
 function formatUsd(cents) {
@@ -275,6 +277,31 @@ function createNotificationService({ db = prisma } = {}) {
     });
   }
 
+  async function notifyDisputeOpened({ project, dispute, raisedByUserId }) {
+    const who = raisedByUserId === project.clientId ? 'Client' : 'Freelancer';
+    return notifyProjectParties({
+      project,
+      type: TYPES.DISPUTE_OPENED,
+      message: `${who} raised a dispute on “${project.title}”. Payout and exit are paused until the counselor decides.`,
+      milestoneId: dispute?.milestoneId || null,
+      dedupePrefix: `DISPUTE_OPENED:${dispute?.id || project.id}`,
+    });
+  }
+
+  async function notifyDisputeResolved({ project, dispute, plan }) {
+    const decision = plan?.decision || dispute?.decision || 'RESOLVED';
+    const freelancer = formatUsd(plan?.freelancerAmountCents ?? dispute?.freelancerAmountCents);
+    const client = formatUsd(plan?.clientRefundCents ?? dispute?.clientRefundCents);
+    const deposit = plan?.depositDisposition || dispute?.depositDisposition || 'NONE';
+    return notifyProjectParties({
+      project,
+      type: TYPES.DISPUTE_RESOLVED,
+      message: `Counselor decided “${project.title}”: ${decision}. Freelancer ${freelancer}, client refund ${client}, deposit ${deposit}.`,
+      milestoneId: dispute?.milestoneId || null,
+      dedupePrefix: `DISPUTE_RESOLVED:${dispute?.id || project.id}`,
+    });
+  }
+
   async function notifyDepositForfeited({ project, amountCents, exitEvent }) {
     return notifyProjectParties({
       project,
@@ -300,6 +327,8 @@ function createNotificationService({ db = prisma } = {}) {
     notifyDepositHeld,
     notifyDepositReturned,
     notifyDepositForfeited,
+    notifyDisputeOpened,
+    notifyDisputeResolved,
   };
 }
 
@@ -322,4 +351,6 @@ module.exports = {
   notifyDepositHeld: defaultService.notifyDepositHeld,
   notifyDepositReturned: defaultService.notifyDepositReturned,
   notifyDepositForfeited: defaultService.notifyDepositForfeited,
+  notifyDisputeOpened: defaultService.notifyDisputeOpened,
+  notifyDisputeResolved: defaultService.notifyDisputeResolved,
 };

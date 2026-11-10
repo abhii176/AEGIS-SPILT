@@ -7,7 +7,7 @@ const {
   sumMilestoneTotalCents,
   isCancelledStatus,
 } = require('../../lib/exitMath');
-const { assertProjectNotCancelled } = require('../../lib/projectStatus');
+const { assertProjectNotCancelled, assertPayoutAllowed } = require('../../lib/projectStatus');
 
 /**
  * Freelancer security deposit — PayPal Orders approve → capture (mirrors vault escrow).
@@ -61,6 +61,7 @@ function createDepositService({
   }) {
     const project = await loadProject(projectId);
     assertProjectNotCancelled(project, 'funding a deposit');
+    assertPayoutAllowed(project, 'funding a deposit');
 
     if (project.freelancerId !== userId) {
       const err = new Error('Only the project freelancer can fund the security deposit');

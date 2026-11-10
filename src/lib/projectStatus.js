@@ -1,4 +1,5 @@
 const { isCancelledStatus, CANCELLED_STATUSES } = require('./exitMath');
+const { assertExitAllowed, assertPayoutAllowed, isDisputeOpenStatus } = require('./disputeMath');
 
 function assertProjectNotCancelled(project, action = 'this action') {
   if (isCancelledStatus(project?.status)) {
@@ -13,6 +14,10 @@ function assertProjectNotCancelled(project, action = 'this action') {
 
 module.exports = {
   assertProjectNotCancelled,
+  assertProjectNotDisputed: assertPayoutAllowed,
+  assertExitAllowed,
+  assertPayoutAllowed,
+  isDisputeOpenStatus,
   isCancelledStatus,
   CANCELLED_STATUSES,
 };

@@ -11,6 +11,7 @@ const {
   sumPaidOutCents,
   sumCapturedVaultCents,
 } = require('../../lib/exitMath');
+const { assertExitAllowed } = require('../../lib/disputeMath');
 
 /**
  * Exit / cancellation orchestration — mutual, client one-sided, freelancer walk-away.
@@ -151,6 +152,7 @@ function createExitService({
         exitEvent: project.exitEvents[0] || null,
       };
     }
+    assertExitAllowed(project, 'exits');
     const path = String(exitPath || 'MUTUAL').toUpperCase();
     if (!['MUTUAL', 'CLIENT_ONESIDED', 'FREELANCER_WALKAWAY'].includes(path)) {
       const err = new Error('exitPath must be MUTUAL, CLIENT_ONESIDED, or FREELANCER_WALKAWAY');
@@ -332,6 +334,7 @@ function createExitService({
   }) {
     const project = await loadProjectBundle(projectId);
     assertParticipant(userId, project);
+    assertExitAllowed(project, 'exits');
 
     const idempotencyKey = `exit:${project.id}`;
     let existing = await db.exitEvent.findUnique({ where: { idempotencyKey } });
@@ -632,6 +635,7 @@ function createExitService({
   async function requestCancellation({ projectId, userId, reason = null }) {
     const project = await loadProjectBundle(projectId);
     assertParticipant(userId, project);
+    assertExitAllowed(project, 'cancellation requests');
     if (isCancelledStatus(project.status)) {
       const err = new Error('Project already cancelled');
       err.status = 409;
@@ -785,6 +789,8 @@ function createExitService({
     executeExit,
     returnDepositOnCompletion,
     refundVaultToClient,
+    payoutAmount,
+    settleDeposit,
   };
 }
 

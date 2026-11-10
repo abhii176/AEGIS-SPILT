@@ -201,9 +201,13 @@ async function simulateMerge(req, res, next) {
       alreadyReleased: Boolean(result.alreadyReleased),
       alreadyFailed: Boolean(result.alreadyFailed),
       awaitingClientSignoff: Boolean(result.awaitingClientSignoff),
-      note: result.awaitingClientSignoff
-        ? 'AI passed. Payout waits for the client sign-off.'
-        : 'Simulated GitHub merge without a public webhook URL.',
+      payoutPaused: Boolean(result.payoutPaused),
+      disputeOpen: Boolean(result.disputeOpen),
+      note: result.disputeOpen
+        ? 'AI audit saved. Payout is paused because this project is DISPUTED.'
+        : result.awaitingClientSignoff
+          ? 'AI passed. Payout waits for the client sign-off.'
+          : 'Simulated GitHub merge without a public webhook URL.',
     });
   } catch (err) {
     return next(err);
