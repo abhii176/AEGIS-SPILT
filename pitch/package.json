@@ -1,0 +1,17 @@
+{
+  "name": "aegis-split-pitch",
+  "private": true,
+  "type": "module",
+  "description": "Hackathon pitch film for Aegis-Split",
+  "scripts": {
+    "voice": "python3 generate_voice.py",
+    "bed": "python3 make_bed.py",
+    "capture": "node capture_ui.mjs",
+    "stills": "node render.mjs --stills",
+    "render": "node render.mjs",
+    "assemble": "bash assemble.sh"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.1"
+  }
+}
