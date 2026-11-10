@@ -215,9 +215,13 @@
             <a class="btn secondary" id="link-approve" href="#" target="_blank" rel="noopener" hidden>Open PayPal approve</a>
             <button type="button" class="btn ghost" data-go="github" id="btn-fund-next" disabled>Continue</button>
           </div>
-          <div class="action-row">
-            <button type="button" class="btn secondary" id="btn-deposit">Fund freelancer deposit</button>
-            <a class="btn ghost" id="link-deposit-approve" href="#" target="_blank" rel="noopener" hidden>Open deposit approve</a>
+          <div class="deposit-panel" id="deposit-panel">
+            <p class="deposit-status" id="deposit-status" hidden>Freelancer deposit: —</p>
+            <p class="deposit-hint" id="deposit-hint" hidden>Switch to Rohan (freelancer) to pay the deposit</p>
+            <div class="action-row" id="deposit-actions" hidden>
+              <button type="button" class="btn secondary" id="btn-deposit">Fund freelancer deposit</button>
+              <a class="btn ghost" id="link-deposit-approve" href="#" target="_blank" rel="noopener" hidden>Open deposit approve</a>
+            </div>
           </div>
           <pre class="log" id="log-fund" hidden></pre>
         </div>
@@ -337,6 +341,7 @@
       <span id="health-dot" title="API health">●</span>
     </footer>
 
+    <script src="/depositPanel.js"></script>
     <script src="/app.js" type="module"></script>
   </body>
 </html>
