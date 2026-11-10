@@ -115,6 +115,11 @@ function updateSessionChip() {
   }
   chip.hidden = false;
   $('#session-name').textContent = `${state.user.name || state.user.email} · ${state.user.role}`;
+  const activeId = state.userId;
+  $all('.persona').forEach((b) => {
+    const persona = state.users[b.dataset.persona];
+    b.classList.toggle('selected', Boolean(persona?.id && persona.id === activeId));
+  });
 }
 
 function persistSeenNotifs() {
@@ -385,6 +390,7 @@ async function createProjectAndMilestone(form) {
   });
 
   const amountCents = Math.round(amountUsd * 100);
+  const requiresManualSignoff = fd.get('requiresManualSignoff') === 'on';
   const { milestone } = await api(`/api/projects/${project.id}/milestones`, {
     method: 'POST',
     body: {
@@ -392,10 +398,14 @@ async function createProjectAndMilestone(form) {
       taskDescription: 'Deliver Milestone 1 per acceptance criteria',
       acceptanceCriteria,
       amountCents,
+      requiresManualSignoff,
     },
   });
 
   state.userId = prior || sarah.id;
+  const restored = Object.values(state.users).find((u) => u?.id === state.userId);
+  if (restored) state.user = restored;
+  updateSessionChip();
   state.projectId = project.id;
   state.milestoneId = milestone.id;
   state.lastMilestone = milestone;
@@ -403,14 +413,14 @@ async function createProjectAndMilestone(form) {
   state.depositApprovalUrl = '';
   persist();
   $('#btn-project-next').disabled = false;
-  renderProjectMeta(project, amountCents);
+  renderProjectMeta(project, amountCents, milestone);
   renderDepositPanel();
   showLog('#log-project', { project, milestone });
   await refreshChat();
   startChatPolling();
 }
 
-function renderProjectMeta(project, milestoneTotalCents) {
+function renderProjectMeta(project, milestoneTotalCents, milestone) {
   const box = $('#project-meta');
   if (!box || !project) return;
   box.hidden = false;
@@ -425,6 +435,11 @@ function renderProjectMeta(project, milestoneTotalCents) {
   $('#meta-penalty').textContent = String(project.earlyExitPenaltyPercent ?? 50);
   $('#meta-deposit').textContent = `$${(deposit / 100).toFixed(2)} (${project.depositStatus || 'PENDING'})`;
   $('#meta-status').textContent = project.status || '—';
+  const signoff = $('#meta-signoff');
+  if (signoff) {
+    const manual = milestone?.requiresManualSignoff === true || state.lastMilestone?.requiresManualSignoff === true;
+    signoff.textContent = manual ? 'client sign-off after AI pass' : 'automatic on AI pass';
+  }
 }
 
 function stopChatPolling() {
@@ -556,6 +571,10 @@ async function ensureActorReady(userId) {
     user = (await api('/api/auth/me')).user;
   }
   state.user = user;
+  state.userId = user.id;
+  persist();
+  updateSessionChip();
+  if (typeof renderDepositPanel === 'function') renderDepositPanel();
   return user;
 }
 
@@ -806,20 +825,107 @@ async function simulateMerge() {
   });
 
   state.lastAudit = data.audit || null;
-  state.lastMilestone = data.milestone || null;
+  state.lastMilestone = data.milestone || state.lastMilestone;
+  state.awaitingSignoff = data.awaitingClientSignoff === true;
   renderAudit(data);
   $('#btn-audit-next').disabled = false;
   showLog('#log-audit', data);
   await refreshNotifications({ toastNew: true });
 }
 
+function renderSignoffControls(data) {
+  const btn = $('#btn-signoff');
+  const hint = $('#signoff-hint');
+  if (!btn || !hint) return;
+  const milestone = data.milestone || state.lastMilestone;
+  const waiting =
+    data.awaitingClientSignoff === true ||
+    (milestone?.requiresManualSignoff === true &&
+      milestone?.auditPassed === true &&
+      milestone?.status === 'PASSED');
+  const paid = milestone?.status === 'PAID' || milestone?.status === 'RELEASED';
+  if (!waiting || paid) {
+    btn.hidden = true;
+    hint.hidden = !milestone?.requiresManualSignoff;
+    hint.textContent = paid && milestone?.requiresManualSignoff
+      ? 'Sarah signed off. PayPal payout is recorded on the next step.'
+      : '';
+    if (!hint.textContent) hint.hidden = true;
+    return;
+  }
+  btn.hidden = false;
+  hint.hidden = false;
+  const sarahId = state.users.sarah?.id;
+  const actingAsClient = sarahId && state.userId === sarahId;
+  hint.textContent = actingAsClient
+    ? 'AI passed the diff. Press sign-off to pay the full milestone. There is no auto-timeout.'
+    : 'AI passed the diff. Switch to Sarah (client) and press sign-off to pay. Rohan cannot release this himself.';
+}
+
+async function clientSignoff() {
+  if (!state.projectId || !state.milestoneId) throw new Error('Create a milestone first');
+  const sarah = state.users.sarah;
+  if (!sarah?.id) throw new Error('Seed Sarah first');
+  await ensureActorReady(sarah.id);
+  const data = await api(
+    `/api/projects/${state.projectId}/milestones/${state.milestoneId}/signoff`,
+    { method: 'POST', body: {} }
+  );
+  state.lastMilestone = data.milestone || state.lastMilestone;
+  state.awaitingSignoff = false;
+  renderAudit({
+    audit: state.lastAudit,
+    milestone: state.lastMilestone,
+    awaitingClientSignoff: false,
+  });
+  showLog('#log-audit', data);
+  await refreshNotifications({ toastNew: true });
+}
+
+async function loadEvidence() {
+  if (!state.projectId || !state.userId) throw new Error('Create a project and pick a user first');
+  const data = await api(`/api/projects/${state.projectId}/evidence`);
+  const evidence = data.evidence || {};
+  const board = $('#evidence-board');
+  board.hidden = false;
+  $('#evidence-note').textContent = evidence.note || '';
+  const lines = [];
+  lines.push(`Platform fee: ${evidence.platformFeePercent ?? 0}%`);
+  lines.push(`Recorded: ${(evidence.recorded || []).join(', ') || '—'}`);
+  lines.push(`Not recorded: ${(evidence.notRecorded || []).join(', ') || '—'}`);
+  lines.push('');
+  (evidence.messages || []).forEach((msg) => {
+    const who = msg.senderName || msg.senderRole || 'user';
+    lines.push(`[chat] ${who}: ${msg.body}`);
+  });
+  if (!(evidence.messages || []).length) lines.push('[chat] No messages yet.');
+  lines.push('');
+  (evidence.merges || []).forEach((ev) => {
+    lines.push(`[diff] ${ev.repoFullName || 'repo'} #${ev.prNumber ?? '—'} ${ev.mergeSha || ''}`);
+    if (ev.diffPreview) lines.push(ev.diffPreview);
+  });
+  if (!(evidence.merges || []).length) lines.push('[diff] No merge recorded yet.');
+  lines.push('');
+  (evidence.milestones || []).forEach((m) => {
+    lines.push(`[audit] ${m.title} ${m.status} ${m.auditPassed == null ? '' : m.auditPassed ? 'PASS' : 'FAIL'}`);
+    if (m.auditReport) lines.push(m.auditReport);
+  });
+  $('#evidence-body').textContent = lines.join('\n');
+}
+
 function renderAudit(data) {
   const board = $('#audit-board');
   board.hidden = false;
   const passed = data.audit?.passed === true || data.milestone?.auditPassed === true;
+  const waiting = data.awaitingClientSignoff === true;
+  const engine = data.audit?.engine || data.audit?.provider || '';
   const verdict = $('#audit-verdict');
-  verdict.textContent = passed ? 'PASS — criteria met' : 'FAIL — criteria not met';
+  let label = passed ? 'PASS — criteria met' : 'FAIL — criteria not met';
+  if (waiting) label = 'PASS — waiting for client sign-off';
+  if (engine) label += ` (${engine})`;
+  verdict.textContent = label;
   verdict.className = `audit-verdict ${passed ? 'pass' : 'fail'}`;
+  renderSignoffControls(data);
 
   const checks = $('#audit-checks');
   const list = data.audit?.checks || [];
@@ -874,13 +980,22 @@ function renderPaid(milestone) {
   $('#paid-amount').textContent = `$${usd} ${milestone.currency || 'USD'}`;
   const status = milestone.status;
   const paid = status === 'PAID' || status === 'RELEASED';
+  const waitingForClient =
+    milestone.requiresManualSignoff === true && status === 'PASSED' && milestone.auditPassed === true;
   $('#paid-status').textContent = paid
-    ? `Status: ${status} — vault released to freelancer`
-    : `Status: ${status}${milestone.auditPassed === false ? ' (audit failed)' : ''}`;
+    ? `Status: ${status} — full amount released to freelancer (0% platform fee)`
+    : waitingForClient
+      ? 'Status: PASSED — waiting for the client to sign off'
+      : `Status: ${status}${milestone.auditPassed === false ? ' (audit failed)' : ''}`;
 
   const rows = [
     ['Milestone', milestone.title],
     ['Audit', milestone.auditPassed == null ? '—' : milestone.auditPassed ? 'PASS' : 'FAIL'],
+    [
+      'Release',
+      milestone.requiresManualSignoff ? 'Client sign-off' : 'Automatic after AI pass',
+    ],
+    ['Platform fee', '0%'],
     ['Payout batch', milestone.paypalPayoutBatchId || '—'],
     ['Payout item', milestone.paypalPayoutItemId || '—'],
     ['Merge SHA', milestone.githubMergeSha || '—'],
@@ -1055,6 +1170,22 @@ function bindUi() {
       await linkGithub(e.target);
     } catch (err) {
       showLog('#log-github', err.data || err.message);
+    }
+  });
+
+  $('#btn-signoff')?.addEventListener('click', async () => {
+    try {
+      await clientSignoff();
+    } catch (err) {
+      showLog('#log-audit', err.data || err.message);
+    }
+  });
+
+  $('#btn-evidence')?.addEventListener('click', async () => {
+    try {
+      await loadEvidence();
+    } catch (err) {
+      showLog('#log-audit', err.data || err.message);
     }
   });
 

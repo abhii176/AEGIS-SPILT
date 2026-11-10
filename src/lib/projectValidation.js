@@ -73,6 +73,14 @@ function validateAddMilestoneBody(body = {}) {
     errors.push('invalid_amount');
   }
 
+  let requiresManualSignoff = false;
+  if (body.requiresManualSignoff != null || body.requires_manual_signoff != null) {
+    const raw = body.requiresManualSignoff ?? body.requires_manual_signoff;
+    if (raw === true || raw === 'true') requiresManualSignoff = true;
+    else if (raw === false || raw === 'false') requiresManualSignoff = false;
+    else errors.push('invalid_requires_manual_signoff');
+  }
+
   if (body.currency != null && body.currency !== '') {
     const currency = String(body.currency).trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) {
@@ -87,7 +95,12 @@ function validateAddMilestoneBody(body = {}) {
     }
   }
 
-  return { ok: errors.length === 0, errors, amountCents: Number.isInteger(amount) ? amount : null };
+  return {
+    ok: errors.length === 0,
+    errors,
+    amountCents: Number.isInteger(amount) ? amount : null,
+    requiresManualSignoff,
+  };
 }
 
 module.exports = {

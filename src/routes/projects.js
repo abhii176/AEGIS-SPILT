@@ -23,6 +23,8 @@ const {
   captureDeposit,
 } = require('../controllers/exitController');
 const { listMessages, postMessage } = require('../controllers/chatController');
+const { clientSignoff } = require('../controllers/signoffController');
+const { getProjectEvidence } = require('../controllers/evidenceController');
 
 const router = express.Router();
 
@@ -39,6 +41,9 @@ router.get('/:projectId', requireAuth, getProject);
  */
 router.get('/:projectId/messages', requireAuth, listMessages);
 router.post('/:projectId/messages', requireAuth, postMessage);
+
+/** Chat, audit text, and stored diff preview for the parties (no counselor login). */
+router.get('/:projectId/evidence', requireAuth, getProjectEvidence);
 
 /**
  * Milestones under a project.
@@ -72,6 +77,18 @@ router.post(
   requireAuth,
   requireKycAndConsent,
   releaseMilestone
+);
+
+/**
+ * Client sign-off for milestones that opted into manual approval.
+ * Default milestones still pay automatically on AI pass.
+ */
+router.post(
+  '/:projectId/milestones/:milestoneId/signoff',
+  payoutLimiter,
+  requireAuth,
+  requireKycAndConsent,
+  clientSignoff
 );
 
 /** Exit / cancel / deposit */

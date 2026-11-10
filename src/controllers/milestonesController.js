@@ -81,6 +81,7 @@ async function addMilestone(req, res, next) {
         taskDescription: String(task).trim(),
         acceptanceCriteria: String(criteria).trim(),
         amountCents: amount,
+        requiresManualSignoff: validation.requiresManualSignoff === true,
         currency: String(currency || env.defaultMilestoneCurrency || 'USD').toUpperCase(),
         githubRepoFullName: githubRepoFullName || githubRepoSnake || null,
         githubPrNumber:

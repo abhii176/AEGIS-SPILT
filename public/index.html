@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Aegis-Split — Escrow that pays when the code ships</title>
+    <title>Aegis-Split — Hybrid AI &amp; Human Micro-Escrow</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -62,11 +62,28 @@
       <!-- LANDING -->
       <section class="panel active" id="panel-landing" data-step="landing">
         <div class="hero">
+          <p class="hero-kicker">PayPal Hackathon 2026 · Team Escrow eSports</p>
           <p class="brand-hero">Aegis-Split</p>
-          <h1 class="hero-line">Money locked. Code proven. Paid.</h1>
+          <h1 class="hero-line">Hybrid AI &amp; Human Micro-Escrow Engine</h1>
           <p class="hero-sub">
-            Walk the Rohan ↔ Sarah story: verify, fund a milestone, merge on GitHub, watch AI release the vault.
+            A merged GitHub pull request is checked against the milestone’s acceptance criteria.
+            Objective work is paid in full through PayPal when that check passes. Subjective work
+            can wait for the client to sign off. Platform fee: 0%.
           </p>
+          <ul class="trust-row">
+            <li>
+              <strong>Client ghosting</strong>
+              Objective milestones pay on merge. The client cannot stall that payout.
+            </li>
+            <li>
+              <strong>Scope creep</strong>
+              Acceptance criteria are saved when the milestone is created. There is no edit button.
+            </li>
+            <li>
+              <strong>Paid per module</strong>
+              Each milestone is its own PayPal hold and its own payout.
+            </li>
+          </ul>
           <div class="cta-row">
             <button type="button" class="btn primary" data-go="users">Start demo</button>
             <a class="btn ghost" href="#users" data-go="users">Skip intro</a>
@@ -79,7 +96,9 @@
         <div class="step-frame">
           <p class="step-kicker">Step 1</p>
           <h2>Pick who you are</h2>
-          <p class="step-lead">Seed Sarah (client) and Rohan (freelancer), then act as one via the auth stub.</p>
+          <p class="step-lead">
+            Seed Sarah (client) and Rohan (freelancer). The demo signs you in with a stand-in header, not a real account.
+          </p>
           <div class="persona-row" id="persona-row">
             <button type="button" class="persona" data-persona="sarah" disabled>
               <span class="persona-role">Client</span>
@@ -106,8 +125,27 @@
           <p class="step-kicker">Step 2</p>
           <h2>Gov ID + User Consent Agreement</h2>
           <p class="step-lead">
-            Both gates must pass before projects, funding, or merges. Demo scaffolds DigiLocker (IN) / Stripe Identity (intl).
+            The API returns 403 until both gates pass. This demo sets the government-ID flag itself.
+            Live DigiLocker (India) and Stripe Identity (other countries) are not connected yet.
           </p>
+          <div class="rule-grid">
+            <article class="rule-card">
+              <h3>1. Identity gate</h3>
+              <p>Projects, funding, and merges stay blocked until the ID flag and the consent log exist.</p>
+            </article>
+            <article class="rule-card">
+              <h3>2. On-platform chat</h3>
+              <p>Project messages stay in the app. The product does not detect WhatsApp, email, or other outside chats.</p>
+            </article>
+            <article class="rule-card">
+              <h3>3. Exit penalty</h3>
+              <p>A one-sided client cancel pays 50% of the remaining vault to the freelancer through PayPal. The rest goes back to the client.</p>
+            </article>
+            <article class="rule-card">
+              <h3>4. Conduct</h3>
+              <p>The consent agreement forbids abuse and fraud. There is no separate legal-action workflow.</p>
+            </article>
+          </div>
           <div class="status-strip" id="verify-status">
             <div class="pill" data-flag="kyc">Gov ID <strong>—</strong></div>
             <div class="pill" data-flag="consent">Consent <strong>—</strong></div>
@@ -144,7 +182,9 @@
         <div class="step-frame">
           <p class="step-kicker">Step 3</p>
           <h2>Create project &amp; milestone</h2>
-          <p class="step-lead">Sarah hires Rohan. Milestone 1 locks $250 until acceptance criteria pass.</p>
+          <p class="step-lead">
+            Sarah hires Rohan. Milestone 1 locks $250. Leave manual sign-off off for the main demo so an AI pass pays immediately.
+          </p>
           <form class="form-stack" id="form-project">
             <label>
               Project title
@@ -170,18 +210,27 @@
               Acceptance criteria
               <textarea name="acceptanceCriteria" rows="3" required>Ship hero CTA; login form; session cookie; Lighthouse a11y >= 90</textarea>
             </label>
+            <p class="field-hint">These words are locked after you create the milestone. Later edits are not available.</p>
+            <label class="check-inline">
+              <input type="checkbox" name="requiresManualSignoff" id="requires-manual-signoff" />
+              Needs manual client sign-off (subjective layout, UX, or visual work)
+            </label>
+            <p class="field-hint">
+              Off: AI pass pays Rohan at once. On: AI still checks the diff, then Sarah must press sign-off before PayPal pays.
+              There is no timeout if she never presses it.
+            </p>
             <div class="action-row">
               <button type="submit" class="btn primary">Create project + milestone</button>
               <button type="button" class="btn ghost" data-go="fund" id="btn-project-next" disabled>Continue</button>
             </div>
           </form>
           <div class="project-meta" id="project-meta" hidden>
-            <p><strong>Penalty:</strong> <span id="meta-penalty">—</span>% · <strong>Deposit:</strong> <span id="meta-deposit">—</span> · <strong>Status:</strong> <span id="meta-status">—</span></p>
+            <p><strong>Penalty:</strong> <span id="meta-penalty">—</span>% · <strong>Deposit:</strong> <span id="meta-deposit">—</span> · <strong>Status:</strong> <span id="meta-status">—</span> · <strong>Payout:</strong> <span id="meta-signoff">—</span></p>
           </div>
           <div class="chat-panel" id="chat-panel" hidden>
             <div class="chat-head">
               <h3>Project chat</h3>
-              <p class="chat-sub">Text only · client ↔ freelancer · polls every 4s</p>
+              <p class="chat-sub">Text only · kept for disputes · polls every 4s · calls are not recorded</p>
             </div>
             <ul class="chat-list" id="chat-list" aria-live="polite">
               <li class="chat-empty">Create a project to start chatting</li>
@@ -203,8 +252,9 @@
           <p class="step-kicker">Step 4</p>
           <h2>Fund the vault</h2>
           <p class="step-lead">
-            Creates a PayPal order and returns an approval URL. After sandbox approve, PayPal hits
-            <code>/api/vault/paypal/return</code> (capture) or <code>/api/vault/paypal/cancel</code>.
+            Sarah’s PayPal order holds the milestone amount. Orders v2 approves, then
+            <code>/api/vault/paypal/return</code> captures. Cancel hits
+            <code>/api/vault/paypal/cancel</code>. The freelancer deposit is Rohan’s payment, not Sarah’s.
           </p>
           <label class="check-inline">
             <input type="checkbox" id="fund-capture" />
@@ -233,7 +283,8 @@
           <p class="step-kicker">Exit</p>
           <h2>Cancel / Exit</h2>
           <p class="step-lead">
-            Preview exactly where money goes, then confirm. Mutual needs both parties; one-sided paths apply Section 3 rules.
+            Preview where the money goes, then confirm. A one-sided client cancel uses the 50% early-exit penalty.
+            Mutual cancel has no penalty. If Rohan walks away, his deposit goes to Sarah.
           </p>
           <div class="exit-actions">
             <button type="button" class="btn secondary" id="btn-exit-preview-mutual" data-path="MUTUAL">Preview mutual cancel</button>
@@ -263,7 +314,10 @@
         <div class="step-frame">
           <p class="step-kicker">Step 5</p>
           <h2>Link GitHub to the milestone</h2>
-          <p class="step-lead">Rohan connects the repo and PR that will prove the work.</p>
+          <p class="step-lead">
+            Rohan links the repo and pull request. A merged pull request is the trigger — a plain push does not pay.
+            Live GitHub webhooks are checked with HMAC SHA-256.
+          </p>
           <form class="form-stack" id="form-github">
             <label>
               Repo (owner/name)
@@ -288,11 +342,20 @@
           <p class="step-kicker">Step 6</p>
           <h2>Simulate merge → AI audit</h2>
           <p class="step-lead">
-            Uses <code>DEMO_ADMIN_KEY</code> to fake a merged PR, run the auditor, and release payout on PASS.
+            Fakes a merged pull request and runs the auditor. With manual sign-off off, a pass pays immediately.
+            With it on, the pass waits for Sarah. If no AI key is set, a built-in keyword check is used.
           </p>
           <div class="action-row">
             <button type="button" class="btn primary" id="btn-simulate">Simulate merge</button>
+            <button type="button" class="btn secondary" id="btn-signoff" hidden>Client sign-off &amp; pay</button>
+            <button type="button" class="btn secondary" id="btn-evidence">Show chat, audit, and diff</button>
             <button type="button" class="btn ghost" data-go="paid" id="btn-audit-next" disabled>See payout</button>
+          </div>
+          <p class="field-hint" id="signoff-hint" hidden></p>
+          <div class="evidence-board" id="evidence-board" hidden>
+            <h3>Review evidence</h3>
+            <p class="field-hint" id="evidence-note"></p>
+            <pre class="audit-report" id="evidence-body"></pre>
           </div>
           <div class="audit-board" id="audit-board" hidden>
             <p class="audit-verdict" id="audit-verdict"></p>
@@ -308,7 +371,9 @@
         <div class="step-frame finale">
           <p class="step-kicker">Step 7</p>
           <h2>Released</h2>
-          <p class="step-lead">Milestone status after AI pass + PayPal Payouts.</p>
+          <p class="step-lead">
+            Full milestone amount via PayPal Payouts. Aegis-Split does not take a cut.
+          </p>
           <div class="paid-hero" id="paid-hero">
             <p class="paid-amount" id="paid-amount">—</p>
             <p class="paid-status" id="paid-status">Waiting for audit…</p>
@@ -337,7 +402,10 @@
     </dialog>
 
     <footer class="site-foot">
-      <span>Demo UI · Express API on same origin</span>
+      <div class="site-foot-copy">
+        <span>Powered by PayPal Payouts · 0% platform fee · Express + Prisma + PostgreSQL</span>
+        <span>Team Escrow eSports — Mayank Kumar Agarwal, Kavya Chavda, Abhiraj Chhaparwal, Mohit Khoiwal, Krishna Chaudhari</span>
+      </div>
       <span id="health-dot" title="API health">●</span>
     </footer>
 
