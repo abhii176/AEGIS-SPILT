@@ -1,5 +1,6 @@
 const { prisma } = require('../lib/prisma');
 const { env } = require('../config/env');
+const { summarizeProgress } = require('../services/kyc/sandbox');
 
 const DEMO_PERSONAS = [
   {
@@ -43,6 +44,12 @@ function publicUser(user) {
     paypalEmail: user.paypalEmail,
     govIdVerified: user.govIdVerified,
     kycProvider: user.kycProvider,
+    kycMethod: user.kycMethod || null,
+    kycVerifiedAt: user.kycVerifiedAt || null,
+    kycMaskedId: user.kycMaskedId || null,
+    kycIdLast4: user.kycIdLast4 || null,
+    kycPhoneLast4: user.kycPhoneLast4 || null,
+    kycSandbox: summarizeProgress(user),
     monitoringConsentGranted: user.monitoringConsentGranted,
     createdAt: user.createdAt,
   };

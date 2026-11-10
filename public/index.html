@@ -131,8 +131,9 @@
           <p class="step-kicker">Step 2</p>
           <h2>Gov ID + User Consent Agreement</h2>
           <p class="step-lead">
-            The API returns 403 until both gates pass. This demo sets the government-ID flag itself.
-            Live DigiLocker (India) and Stripe Identity (other countries) are not connected yet.
+            The API returns 403 until the identity check and the consent agreement are both done.
+            The check below is a DigiLocker-style sandbox. It does not send email or SMS, and it does not contact a government system.
+            Stripe Identity stays off until a later release.
           </p>
           <div class="rule-grid">
             <article class="rule-card">
@@ -156,9 +157,80 @@
             <div class="pill" data-flag="kyc">Gov ID <strong>—</strong></div>
             <div class="pill" data-flag="consent">Consent <strong>—</strong></div>
           </div>
-          <div class="action-row">
-            <button type="button" class="btn primary" id="btn-verify-id">Verify government ID</button>
-          </div>
+          <section class="kyc-stepper" id="kyc-stepper" aria-labelledby="kyc-stepper-title">
+            <h3 id="kyc-stepper-title">Identity verification - DigiLocker sandbox (demo)</h3>
+            <p class="kyc-banner">
+              Sandbox simulation. The code on screen is <strong>Sandbox OTP: 123456</strong>.
+              No email or SMS is sent. No government system is contacted.
+            </p>
+            <p class="kyc-quick-row">
+              <button type="button" class="text-btn" id="btn-kyc-quick">Quick verify (judges)</button>
+              <span class="field-hint">One click for Sarah, Rohan, or Maya. Consent is still signed below.</span>
+            </p>
+            <ol class="kyc-steps">
+              <li class="kyc-step" data-kyc-step="email">
+                <h4>1. Email</h4>
+                <label>
+                  Email
+                  <input id="kyc-email" type="email" readonly autocomplete="email" />
+                </label>
+                <div class="action-row">
+                  <button type="button" class="btn secondary" id="btn-kyc-email-start">Send sandbox email OTP</button>
+                </div>
+                <div id="kyc-email-confirm" hidden>
+                  <p class="sandbox-otp">Sandbox OTP: 123456</p>
+                  <label>
+                    Email OTP
+                    <input id="kyc-email-otp" inputmode="numeric" maxlength="6" autocomplete="off" />
+                  </label>
+                  <button type="button" class="btn primary" id="btn-kyc-email-confirm">Confirm email</button>
+                </div>
+                <p class="kyc-done-line" data-kyc-done="email" hidden>Email confirmed</p>
+              </li>
+              <li class="kyc-step is-locked" data-kyc-step="phone">
+                <h4>2. Phone</h4>
+                <label>
+                  Phone number
+                  <input id="kyc-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+91 98765 43210" disabled />
+                </label>
+                <div class="action-row">
+                  <button type="button" class="btn secondary" id="btn-kyc-phone-start" disabled>Send sandbox SMS OTP</button>
+                </div>
+                <div id="kyc-phone-confirm" hidden>
+                  <p class="sandbox-otp">Sandbox OTP: 123456</p>
+                  <label>
+                    SMS OTP
+                    <input id="kyc-phone-otp" inputmode="numeric" maxlength="6" autocomplete="off" />
+                  </label>
+                  <button type="button" class="btn primary" id="btn-kyc-phone-confirm">Confirm phone</button>
+                </div>
+                <p class="kyc-done-line" data-kyc-done="phone" hidden>Phone confirmed</p>
+              </li>
+              <li class="kyc-step is-locked" data-kyc-step="id">
+                <h4>3. Government ID</h4>
+                <div class="action-row">
+                  <button type="button" class="btn primary" id="btn-kyc-locker" disabled>Continue with DigiLocker (sandbox)</button>
+                  <span
+                    class="tip-host"
+                    tabindex="0"
+                    title="Stripe Identity is on the roadmap. This demo uses the DigiLocker-style sandbox only."
+                    aria-describedby="stripe-roadmap-tip"
+                  >
+                    <button type="button" class="btn ghost" id="btn-stripe-roadmap" disabled>Stripe Identity (roadmap)</button>
+                    <span class="tip" id="stripe-roadmap-tip" role="tooltip">
+                      Stripe Identity is on the roadmap. This demo uses the DigiLocker-style sandbox only.
+                    </span>
+                  </span>
+                </div>
+              </li>
+            </ol>
+            <p class="kyc-error" id="kyc-error" hidden></p>
+            <div class="kyc-result" id="kyc-result" hidden>
+              <h4>Documents fetched (sandbox)</h4>
+              <p class="field-hint">Name, date of birth, and address proof come from demo data. Only the mask is saved.</p>
+              <dl class="kyc-docs" id="kyc-result-list"></dl>
+            </div>
+          </section>
           <div class="consent-box" id="consent-box">
             <p class="consent-title">Aegis-Split User Consent Agreement <span id="consent-version">v2.0.0</span></p>
             <pre class="consent-md" id="consent-md">Loading agreement…</pre>
@@ -440,6 +512,53 @@
         </div>
       </section>
     </main>
+
+    <dialog id="kyc-locker-dialog" aria-labelledby="kyc-locker-title">
+      <div class="kyc-dialog">
+        <p class="kyc-banner">DigiLocker-style sandbox · demo only · no government system is contacted</p>
+        <h3 id="kyc-locker-title">Share demo identity documents?</h3>
+        <div id="kyc-locker-consent">
+          <p>Aegis-Split demo would like to fetch these sandbox records for the signed-in user:</p>
+          <ul class="kyc-share-list">
+            <li>Government ID (shown masked)</li>
+            <li>Name</li>
+            <li>Date of birth</li>
+            <li>Address proof</li>
+          </ul>
+          <label>
+            12-digit Aadhaar-format number
+            <input id="kyc-locker-id" inputmode="numeric" maxlength="14" autocomplete="off" spellcheck="false" />
+          </label>
+          <p class="field-hint" id="kyc-locker-hint"></p>
+          <p class="kyc-error" id="kyc-locker-error" hidden></p>
+          <menu class="action-row">
+            <button type="button" class="btn ghost" id="kyc-locker-cancel">Cancel</button>
+            <button type="button" class="btn primary" id="kyc-locker-continue">Continue</button>
+          </menu>
+        </div>
+        <div id="kyc-locker-otp" hidden>
+          <p>Enter the sandbox code to finish the pretend fetch. Nothing was texted.</p>
+          <p class="sandbox-otp" id="kyc-locker-otp-hint">Sandbox OTP: 123456</p>
+          <label>
+            Sandbox OTP
+            <input id="kyc-locker-otp-input" inputmode="numeric" maxlength="6" autocomplete="off" />
+          </label>
+          <p class="kyc-error" id="kyc-locker-otp-error" hidden></p>
+          <menu class="action-row">
+            <button type="button" class="btn ghost" id="kyc-locker-back">Back</button>
+            <button type="button" class="btn primary" id="kyc-locker-fetch">Fetch sandbox documents</button>
+          </menu>
+        </div>
+        <div id="kyc-locker-docs" hidden>
+          <p class="sandbox-otp">Documents fetched (sandbox)</p>
+          <p>These fields come from demo data. The ID below is masked. The full number is not saved.</p>
+          <dl class="kyc-docs" id="kyc-locker-doc-list"></dl>
+          <menu class="action-row">
+            <button type="button" class="btn primary" id="kyc-locker-done">Done</button>
+          </menu>
+        </div>
+      </div>
+    </dialog>
 
     <dialog id="exit-dialog">
       <form method="dialog" class="exit-dialog-body">
