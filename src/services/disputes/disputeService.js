@@ -18,6 +18,10 @@ const {
   decisionTransition,
 } = require('../../lib/disputeMath');
 const { sampleCallRecording } = require('../../lib/callRecordingPreview');
+const {
+  isSampleProject,
+  assertAgencySampleReadonly,
+} = require('../../lib/agencyDashboard');
 
 const OPEN_MILESTONE_FILTER = { notIn: ['PAID', 'RELEASED', 'CANCELLED'] };
 
@@ -138,6 +142,7 @@ function createDisputeService({
     }
 
     const project = await loadProjectBundle(projectId);
+    assertAgencySampleReadonly(project);
     assertParticipant(userId, project);
 
     const open = (project.disputes || []).find((d) => d.status === 'OPEN');
@@ -380,6 +385,7 @@ function createDisputeService({
 
     const disputes = [];
     for (const row of rows) {
+      if (isSampleProject(row.project)) continue;
       const evidence = await buildEvidence(row.project, row);
       disputes.push({
         ...publicDispute(row, {
@@ -408,6 +414,7 @@ function createDisputeService({
 
   async function previewDecision({ disputeId, decision, freelancerPercent, freelancerAtFault = false }) {
     const { dispute, project } = await loadOpenDispute(disputeId);
+    assertAgencySampleReadonly(project);
     if (dispute.status !== 'OPEN') {
       const err = new Error('This dispute is already decided');
       err.status = 409;
@@ -602,6 +609,7 @@ function createDisputeService({
   }) {
     const written = assertDecisionNote(note);
     const { dispute, project } = await loadOpenDispute(disputeId);
+    assertAgencySampleReadonly(project);
     const atFault = Boolean(freelancerAtFault);
 
     if (dispute.status === 'RESOLVED') {

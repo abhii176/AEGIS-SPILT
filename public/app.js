@@ -1,15 +1,17 @@
 const STEPS = [
-  { id: 'landing', label: 'Home' },
-  { id: 'users', label: 'Users' },
+  { id: 'landing', label: 'Home', rail: false },
+  { id: 'users', label: 'People' },
   { id: 'verify', label: 'Verify' },
   { id: 'project', label: 'Project' },
   { id: 'fund', label: 'Fund' },
-  { id: 'github', label: 'GitHub' },
-  { id: 'audit', label: 'Audit' },
+  { id: 'work', label: 'Work' },
   { id: 'paid', label: 'Paid' },
   { id: 'exit', label: 'Exit' },
   { id: 'counselor', label: 'Counselor' },
+  { id: 'agency', label: 'Agency' },
 ];
+
+const STEP_ALIAS = { github: 'work', audit: 'work' };
 
 const state = {
   demoKey: localStorage.getItem('aegis.demoKey') || 'hackathon-demo-key',
@@ -31,6 +33,10 @@ const state = {
   chatMessages: [],
   chatPollTimer: null,
   counselorStatus: 'OPEN',
+  agencySeedNote: '',
+  kycHint: null,
+  vaultFunded: false,
+  workChecked: false,
 };
 
 function $(sel, root = document) {
@@ -44,8 +50,44 @@ function $all(sel, root = document) {
 function showLog(id, data) {
   const el = $(id);
   if (!el) return;
-  el.hidden = false;
-  el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+  const failure =
+    typeof data === 'string' ||
+    Boolean(data?.error) ||
+    (data?.message && data.ok !== true && !data.vaultFund && !data.project && !data.milestone);
+  el.textContent = text;
+  el.hidden = !failure;
+  if (failure) {
+    const details = el.closest('details');
+    if (details) details.open = true;
+  }
+}
+
+function isPartyUser() {
+  const id = state.userId;
+  if (!id) return false;
+  const project = state.lastProject;
+  if (project?.clientId && project?.freelancerId) {
+    return id === project.clientId || id === project.freelancerId;
+  }
+  return id === state.users.sarah?.id || id === state.users.rohan?.id;
+}
+
+async function readProject() {
+  try {
+    return await api(`/api/projects/${state.projectId}`);
+  } catch (err) {
+    if (err.status !== 403) throw err;
+    const prior = state.userId;
+    const fallback = state.users.sarah?.id || state.users.rohan?.id;
+    if (!fallback || fallback === prior) throw err;
+    state.userId = fallback;
+    try {
+      return await api(`/api/projects/${state.projectId}`);
+    } finally {
+      state.userId = prior;
+    }
+  }
 }
 
 async function api(path, { method = 'GET', body, auth = true, demo = false } = {}) {
@@ -86,14 +128,19 @@ function persist() {
 }
 
 function go(step) {
+  step = STEP_ALIAS[step] || step;
   if (!STEPS.some((s) => s.id === step)) return;
   $all('.panel').forEach((p) => p.classList.toggle('active', p.dataset.step === step));
   $all('.step-rail button').forEach((b) => b.classList.toggle('active', b.dataset.go === step));
   history.replaceState(null, '', `#${step}`);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (step === 'verify') refreshVerifyUi();
-  if (step === 'paid') refreshPaid();
+  if (step === 'verify') {
+    refreshVerifyUi();
+    loadKycHint();
+  }
+  if (step === 'paid' && (isPartyUser() || state.users.sarah?.id || state.users.rohan?.id)) refreshPaid();
   if (step === 'fund') refreshDepositPanel();
+  if (step === 'work') syncWorkActions();
   if (step === 'project') {
     refreshChat();
     startChatPolling();
@@ -102,13 +149,14 @@ function go(step) {
   }
   if (step === 'project' || step === 'exit' || step === 'paid') refreshDisputeOutcome();
   if (step === 'counselor') refreshCounselor();
+  if (step === 'agency') refreshAgency();
 }
 
 function renderRail() {
   const rail = $('#step-rail');
-  rail.innerHTML = STEPS.map(
-    (s) => `<button type="button" data-go="${s.id}">${s.label}</button>`
-  ).join('');
+  rail.innerHTML = STEPS.filter((s) => s.rail !== false)
+    .map((s) => `<button type="button" data-go="${s.id}">${s.label}</button>`)
+    .join('');
 }
 
 function updateSessionChip() {
@@ -223,21 +271,38 @@ function setPersonasEnabled(enabled) {
   $all('.persona').forEach((btn) => {
     btn.disabled = !enabled;
   });
+  syncUsersPrimary();
 }
 
-function selectPersona(key) {
+function selectPersona(key, { navigate = false } = {}) {
   const user = state.users[key];
   if (!user?.id) return;
   state.userId = user.id;
   state.user = user;
+  state.kycHint = null;
   persist();
   $all('.persona').forEach((b) => b.classList.toggle('selected', b.dataset.persona === key));
-  $('#btn-users-next').disabled = false;
   updateSessionChip();
   refreshVerifyUi();
   refreshNotifications();
   refreshChat();
   renderDepositPanel();
+  syncUsersPrimary();
+  if (navigate) go('verify');
+}
+
+function syncUsersPrimary() {
+  const seeded = Object.values(state.users).some((u) => u?.id);
+  const seedBtn = $('#btn-seed-users');
+  if (seedBtn) seedBtn.hidden = seeded;
+  const hint = $('#users-hint');
+  if (!hint) return;
+  if (!seeded) {
+    hint.textContent = 'Next: press Load demo people.';
+    return;
+  }
+  const name = state.user?.name || 'A person';
+  hint.textContent = `Next: ${name} is selected. Press a card to open Verify.`;
 }
 
 async function refreshMe() {
@@ -257,11 +322,254 @@ function refreshVerifyUi() {
   const consent = $('#verify-status [data-flag="consent"] strong');
   const kycOn = Boolean(state.user?.govIdVerified);
   const consentOn = Boolean(state.user?.monitoringConsentGranted);
-  kyc.textContent = kycOn ? `yes (${state.user.kycProvider || 'verified'})` : 'no';
+  const method = String(state.user?.kycMethod || state.user?.kycProvider || 'verified').replaceAll('_', ' ');
+  kyc.textContent = kycOn ? `yes (${method})` : 'no';
   consent.textContent = consentOn ? 'yes' : 'no';
   $('#verify-status [data-flag="kyc"]').classList.toggle('on', kycOn);
   $('#verify-status [data-flag="consent"]').classList.toggle('on', consentOn);
-  $('#btn-verify-next').disabled = !(kycOn && consentOn);
+  const nameEl = $('#consent-name');
+  if (nameEl && state.user?.name) {
+    const current = nameEl.value.trim();
+    const belongsToSomeoneElse = Object.values(state.users).some(
+      (person) => person?.name && person.name === current && person.id !== state.user.id
+    );
+    if (!current || belongsToSomeoneElse) nameEl.value = state.user.name;
+  }
+  renderKyc();
+  syncVerifyActions();
+}
+
+function syncVerifyActions() {
+  const kycOn = Boolean(state.user?.govIdVerified);
+  const consentOn = Boolean(state.user?.monitoringConsentGranted);
+  const quick = $('#btn-kyc-quick');
+  const consent = $('#btn-consent');
+  const next = $('#btn-verify-next');
+  const done = $('#kyc-quick-done');
+  const hint = $('#verify-hint');
+  if (quick) quick.hidden = kycOn;
+  if (done) done.hidden = !kycOn;
+  if (consent) {
+    consent.hidden = consentOn;
+    consent.classList.toggle('primary', kycOn);
+    consent.classList.toggle('secondary', !kycOn);
+  }
+  if (next) next.hidden = !(kycOn && consentOn);
+  if (!hint) return;
+  if (!state.userId) hint.textContent = 'Next: pick a person first.';
+  else if (!kycOn) hint.textContent = 'Next: press Quick verify, then sign the agreement.';
+  else if (!consentOn) hint.textContent = 'Next: tick the agreement, check the name, and press Sign agreement.';
+  else hint.textContent = 'Next: press Continue to the project.';
+}
+
+function showKycError(target, err) {
+  const el = $(target);
+  const msg = err?.data?.message || err?.message || 'Something went wrong';
+  if (el) {
+    el.hidden = false;
+    el.textContent = msg;
+  }
+  showLog('#log-verify', err?.data || msg);
+}
+
+function clearKycError(target) {
+  const el = $(target);
+  if (!el) return;
+  el.hidden = true;
+  el.textContent = '';
+}
+
+function formatDob(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!match) return iso || '—';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${Number(match[3])} ${months[Number(match[2]) - 1] || ''} ${match[1]}`.trim();
+}
+
+function renderDocList(list, docs) {
+  if (!list) return;
+  if (!docs) {
+    list.innerHTML = '';
+    return;
+  }
+  const rows = [
+    ['ID', docs.maskedId],
+    ['Name', docs.name],
+    ['Date of birth', formatDob(docs.dob)],
+    ['Address proof', docs.addressProof || docs.address],
+  ];
+  list.innerHTML = rows
+    .map(
+      ([label, value]) =>
+        `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || '—')}</dd>`
+    )
+    .join('');
+}
+
+function kycDocumentsFromUser() {
+  const user = state.user;
+  if (!user?.govIdVerified || !user.kycMaskedId) return null;
+  const hint = state.kycHint?.forUserId === state.userId ? state.kycHint.demoRecord : null;
+  return {
+    maskedId: user.kycMaskedId,
+    name: hint?.name || user.name,
+    dob: hint?.dob || '',
+    addressProof: hint?.addressProof || hint?.address || '',
+  };
+}
+
+function renderKyc() {
+  const stepper = $('#kyc-stepper');
+  if (!stepper) return;
+  const user = state.user;
+  const steps = user?.kycSandbox || {};
+  const emailVerified = Boolean(user?.govIdVerified || steps.emailVerified);
+  const phoneVerified = Boolean(user?.govIdVerified || steps.phoneVerified);
+  const hint = state.kycHint?.forUserId === state.userId ? state.kycHint : null;
+
+  const email = $('#kyc-email');
+  if (email) email.value = user?.email || '';
+  const phone = $('#kyc-phone');
+  if (phone && phone.dataset.forUser !== state.userId) {
+    phone.value = '';
+    phone.dataset.forUser = state.userId;
+    phone.dataset.autofilled = '0';
+  }
+  if (phone && hint?.phoneHint && phone.dataset.autofilled !== 'user') {
+    phone.value = hint.phoneHint;
+    phone.dataset.autofilled = '1';
+  }
+  const idInput = $('#kyc-locker-id');
+  if (idInput && hint?.sandboxDemoId && !idInput.value) idInput.value = hint.sandboxDemoId;
+
+  const emailBtn = $('#btn-kyc-email-verify');
+  const phoneBtn = $('#btn-kyc-phone-verify');
+  const idBtn = $('#btn-kyc-id-verify');
+  if (emailBtn) emailBtn.hidden = emailVerified;
+  if (phoneBtn) {
+    phoneBtn.hidden = phoneVerified;
+    phoneBtn.disabled = !emailVerified || Boolean(user?.govIdVerified);
+  }
+  if (idBtn) {
+    idBtn.hidden = Boolean(user?.govIdVerified);
+    idBtn.disabled = !phoneVerified || Boolean(user?.govIdVerified);
+  }
+
+  $('[data-kyc-step="email"]')?.classList.toggle('is-done', emailVerified);
+  $('[data-kyc-step="email"]')?.classList.toggle('is-locked', !user);
+  $('[data-kyc-step="phone"]')?.classList.toggle('is-done', phoneVerified);
+  $('[data-kyc-step="phone"]')?.classList.toggle('is-locked', !emailVerified);
+  $('[data-kyc-step="id"]')?.classList.toggle('is-done', Boolean(user?.govIdVerified));
+  $('[data-kyc-step="id"]')?.classList.toggle('is-locked', !phoneVerified);
+
+  const emailDone = $('[data-kyc-done="email"]');
+  const phoneDone = $('[data-kyc-done="phone"]');
+  if (emailDone) emailDone.hidden = !emailVerified;
+  if (phoneDone) {
+    phoneDone.hidden = !phoneVerified;
+    if (phoneVerified && (steps.phoneLast4 || user?.kycPhoneLast4)) {
+      phoneDone.textContent = `Phone confirmed · ending ${steps.phoneLast4 || user.kycPhoneLast4}`;
+    }
+  }
+
+  const lockerHint = $('#kyc-locker-hint');
+  if (lockerHint && hint?.sandboxDemoId) {
+    lockerHint.textContent = `${hint.sandboxDemoIdLabel}: ${hint.sandboxDemoId}`;
+  }
+
+  const result = $('#kyc-result');
+  const docs = kycDocumentsFromUser();
+  if (result) result.hidden = !docs;
+  if (docs) renderDocList($('#kyc-result-list'), docs);
+}
+
+async function loadKycHint() {
+  if (!state.userId) return null;
+  if (state.kycHint?.forUserId === state.userId) {
+    renderKyc();
+    return state.kycHint;
+  }
+  try {
+    const data = await api('/api/auth/kyc/sandbox');
+    state.kycHint = { forUserId: state.userId, ...data };
+    renderKyc();
+    return data;
+  } catch (err) {
+    showKycError('#kyc-error', err);
+    return null;
+  }
+}
+
+function sandboxOtp(id) {
+  return String($(id)?.value || '123456').trim() || '123456';
+}
+
+async function verifyKycEmail() {
+  clearKycError('#kyc-error');
+  if (!state.user?.email) throw new Error('Pick a user first');
+  const started = await api('/api/auth/kyc/sandbox/email/start', {
+    method: 'POST',
+    body: { email: state.user.email },
+  });
+  await refreshMe();
+  if (started.alreadyVerified) return started;
+  const data = await api('/api/auth/kyc/sandbox/email/confirm', {
+    method: 'POST',
+    body: { otp: sandboxOtp('#kyc-email-otp') },
+  });
+  showLog('#log-verify', data);
+  await refreshMe();
+  return data;
+}
+
+async function verifyKycPhone() {
+  clearKycError('#kyc-error');
+  const started = await api('/api/auth/kyc/sandbox/phone/start', {
+    method: 'POST',
+    body: { phone: $('#kyc-phone')?.value || '' },
+  });
+  await refreshMe();
+  if (started.alreadyVerified) return started;
+  const data = await api('/api/auth/kyc/sandbox/phone/confirm', {
+    method: 'POST',
+    body: { otp: sandboxOtp('#kyc-phone-otp') },
+  });
+  showLog('#log-verify', data);
+  await refreshMe();
+  return data;
+}
+
+async function verifyKycId() {
+  clearKycError('#kyc-error');
+  const started = await api('/api/auth/kyc/sandbox/digilocker/start', {
+    method: 'POST',
+    body: { idNumber: $('#kyc-locker-id')?.value || '' },
+  });
+  await refreshMe();
+  if (started.alreadyVerified) {
+    renderDocList($('#kyc-result-list'), started.documents);
+    return started;
+  }
+  const data = await api('/api/auth/kyc/sandbox/digilocker/confirm', {
+    method: 'POST',
+    body: { otp: sandboxOtp('#kyc-id-otp') },
+  });
+  showLog('#log-verify', data);
+  renderDocList($('#kyc-result-list'), data.documents);
+  const result = $('#kyc-result');
+  if (result && data.documents) result.hidden = false;
+  await refreshMe();
+  return data;
+}
+
+async function quickVerifyKyc() {
+  clearKycError('#kyc-error');
+  if (!state.userId) throw new Error('Pick a user first');
+  const data = await api('/api/auth/kyc/sandbox/quick', { method: 'POST', body: {} });
+  showLog('#log-verify', data);
+  await refreshMe();
+  const box = $('#consent-box');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function seedUsers() {
@@ -277,34 +585,7 @@ async function seedUsers() {
     const key = Object.keys(state.users).find((k) => state.users[k].id === state.userId);
     if (key) selectPersona(key);
   }
-  $('#btn-users-next').disabled = !state.userId;
-}
-
-async function verifyIdentity() {
-  if (!state.userId) throw new Error('Pick a user first');
-  const country = state.user?.countryCode || 'US';
-  const start = await api('/api/auth/verify-identity', {
-    method: 'POST',
-    body: { countryCode: country },
-  });
-
-  let result;
-  if (start.provider === 'digilocker' && start.authorizeUrl) {
-    const url = new URL(start.authorizeUrl);
-    const oauthState = url.searchParams.get('state');
-    result = await api(
-      `/api/auth/verify-identity/callback/digilocker?code=demo-scaffold&state=${encodeURIComponent(oauthState || '')}`,
-      { auth: false }
-    );
-  } else if (start.verificationUrl) {
-    const url = new URL(start.verificationUrl, window.location.origin);
-    result = await api(`${url.pathname}${url.search}`, { auth: false });
-  } else {
-    throw new Error('Unexpected verify-identity response');
-  }
-
-  showLog('#log-verify', { start, result });
-  await refreshMe();
+  syncUsersPrimary();
 }
 
 async function loadConsentAgreement() {
@@ -416,12 +697,28 @@ async function createProjectAndMilestone(form) {
   state.lastProject = project;
   state.depositApprovalUrl = '';
   persist();
-  $('#btn-project-next').disabled = false;
+  syncProjectActions();
   renderProjectMeta(project, amountCents, milestone);
   renderDepositPanel();
   showLog('#log-project', { project, milestone });
   await refreshChat();
   startChatPolling();
+}
+
+function syncProjectActions() {
+  const ready = Boolean(state.projectId && state.milestoneId);
+  const create = $('#btn-create-project');
+  const next = $('#btn-project-next');
+  const again = $('#btn-project-again');
+  const hint = $('#project-hint');
+  if (create) create.hidden = ready;
+  if (next) next.hidden = !ready;
+  if (again) again.hidden = !ready;
+  if (hint) {
+    hint.textContent = ready
+      ? 'Next: press Continue to funding. You can send a message first.'
+      : 'Next: leave the sample text and press Create project.';
+  }
 }
 
 function renderProjectMeta(project, milestoneTotalCents, milestone) {
@@ -497,7 +794,7 @@ function renderChat() {
 
 async function refreshChat({ silent = false } = {}) {
   const hint = $('#chat-hint');
-  if (!state.projectId || !state.userId) {
+  if (!state.projectId || !state.userId || !isPartyUser()) {
     state.chatMessages = [];
     renderChat();
     return null;
@@ -545,21 +842,7 @@ async function ensureActorReady(userId) {
   state.userId = userId;
   let user = (await api('/api/auth/me')).user;
   if (!user.govIdVerified) {
-    const country = user.countryCode || 'US';
-    const start = await api('/api/auth/verify-identity', {
-      method: 'POST',
-      body: { countryCode: country },
-    });
-    if (start.provider === 'digilocker' && start.authorizeUrl) {
-      const url = new URL(start.authorizeUrl);
-      await api(
-        `/api/auth/verify-identity/callback/digilocker?code=demo-scaffold&state=${encodeURIComponent(url.searchParams.get('state') || '')}`,
-        { auth: false }
-      );
-    } else if (start.verificationUrl) {
-      const url = new URL(start.verificationUrl, window.location.origin);
-      await api(`${url.pathname}${url.search}`, { auth: false });
-    }
+    await api('/api/auth/kyc/sandbox/quick', { method: 'POST', body: {} });
     user = (await api('/api/auth/me')).user;
   }
   if (!user.monitoringConsentGranted) {
@@ -576,6 +859,8 @@ async function ensureActorReady(userId) {
   }
   state.user = user;
   state.userId = user.id;
+  const match = Object.entries(state.users).find(([, row]) => row.id === user.id);
+  if (match) state.users[match[0]] = { ...state.users[match[0]], ...user };
   persist();
   updateSessionChip();
   if (typeof renderDepositPanel === 'function') renderDepositPanel();
@@ -604,6 +889,10 @@ async function previewExit(path) {
   state.pendingExitPreview = data.preview;
   const box = $('#exit-preview');
   box.hidden = false;
+  const previewBtn = $('#btn-exit-preview');
+  if (previewBtn) previewBtn.hidden = true;
+  const hint = $('#exit-hint');
+  if (hint) hint.textContent = 'Next: press Confirm exit. The dialog lists the money one more time.';
   $('#exit-lines').innerHTML = formatExitLines(data.preview?.lines || []);
   $('#exit-warn').textContent =
     path === 'MUTUAL'
@@ -694,14 +983,85 @@ function renderDepositPanel() {
     link.hidden = !depositView.showApprove;
     if (depositView.approveUrl) link.href = depositView.approveUrl;
   }
+  syncFundActions();
+}
+
+function noteVaultFromProject(project) {
+  if (!project) return;
+  const status = String(project.fundedStatus || '').toUpperCase();
+  if (['FUNDED', 'PARTIALLY_FUNDED', 'PAID', 'RELEASED'].includes(status)) {
+    state.vaultFunded = true;
+  }
+  const milestones = project.milestones || [];
+  if (
+    milestones.some((m) =>
+      ['FUNDED', 'IN_PROGRESS', 'PASSED', 'RELEASED', 'PAID', 'FAILED'].includes(String(m.status || ''))
+    )
+  ) {
+    state.vaultFunded = true;
+  }
+  if ((project.vaultFunds || []).some((row) => row.status === 'CAPTURED')) {
+    state.vaultFunded = true;
+  }
+}
+
+function syncFundActions() {
+  const fund = $('#btn-fund');
+  const approve = $('#link-approve');
+  const next = $('#btn-fund-next');
+  const depositBtn = $('#btn-deposit');
+  const depositLink = $('#link-deposit-approve');
+  const depositActions = $('#deposit-actions');
+  let showDeposit = Boolean(depositActions && !depositActions.hidden);
+  const depositSettled = / - (paid|returned|forfeited)\b/i.test($('#deposit-status')?.textContent || '');
+  if (showDeposit && depositSettled && !(depositLink && !depositLink.hidden)) {
+    depositActions.hidden = true;
+    if (depositBtn) depositBtn.hidden = true;
+    showDeposit = false;
+  }
+  const needsApprove = Boolean(approve && !approve.hidden);
+  const needsDepositApprove = Boolean(depositLink && !depositLink.hidden);
+  const funded = state.vaultFunded === true;
+
+  if (fund) fund.hidden = needsApprove || funded;
+  if (next) next.hidden = !(funded && (!showDeposit || depositSettled));
+
+  const primary = needsDepositApprove
+    ? depositLink
+    : showDeposit && !depositSettled && (funded || needsApprove)
+      ? depositBtn
+      : needsApprove
+        ? approve
+        : fund && !fund.hidden
+          ? fund
+          : next && !next.hidden
+            ? next
+            : fund;
+
+  for (const el of [fund, approve, next, depositBtn, depositLink]) {
+    if (!el || el.hidden) continue;
+    el.className = el === primary ? 'btn primary' : 'btn secondary';
+  }
+
+  const hint = $('#fund-hint');
+  if (!hint) return;
+  if (needsDepositApprove) hint.textContent = 'Next: open PayPal and approve the deposit.';
+  else if (needsApprove && primary === approve) hint.textContent = 'Next: open PayPal and approve the escrow payment.';
+  else if (!funded) {
+    hint.textContent = showDeposit
+      ? 'Next: press Fund escrow, then Pay security deposit. Open More to capture immediately on a local demo.'
+      : 'Next: press Fund escrow. Open More to capture immediately on a local demo.';
+  } else if (showDeposit && !depositSettled) hint.textContent = 'Next: press Pay security deposit.';
+  else hint.textContent = 'Next: press Continue to work.';
 }
 
 async function refreshDepositPanel() {
   if (state.projectId && state.userId) {
     try {
-      const data = await api(`/api/projects/${state.projectId}`);
+      const data = await readProject();
       if (data?.project) {
         state.lastProject = { ...state.lastProject, ...data.project };
+        noteVaultFromProject(state.lastProject);
         if (Array.isArray(data.project.freelancerDeposits)) {
           const open = data.project.freelancerDeposits.find(
             (row) => row.status === 'ORDER_CREATED' && row.approvalUrl
@@ -750,6 +1110,7 @@ async function fundDeposit() {
   renderDepositPanel();
   showLog('#log-fund', { deposit: data });
   await refreshNotifications({ toastNew: true });
+  syncFundActions();
 }
 
 async function fundVault() {
@@ -782,7 +1143,7 @@ async function fundVault() {
     data.vaultFund?.status === 'CAPTURED' ||
     data.paypal?.autoCapture === true ||
     Boolean(data.vaultFund?.paypalCaptureId);
-  $('#btn-fund-next').disabled = false;
+  if (funded) state.vaultFunded = true;
   showLog('#log-fund', {
     ...data,
     routes: {
@@ -816,8 +1177,7 @@ async function linkGithub(form) {
     }
   );
   state.lastMilestone = data.milestone;
-  $('#btn-github-next').disabled = false;
-  showLog('#log-github', data);
+  showLog('#log-work', data);
 }
 
 async function simulateMerge() {
@@ -835,10 +1195,15 @@ async function simulateMerge() {
   state.lastAudit = data.audit || null;
   state.lastMilestone = data.milestone || state.lastMilestone;
   state.awaitingSignoff = data.awaitingClientSignoff === true;
+  state.workChecked = true;
   renderAudit(data);
-  $('#btn-audit-next').disabled = false;
-  showLog('#log-audit', data);
+  showLog('#log-work', data);
   await refreshNotifications({ toastNew: true });
+}
+
+async function submitWork(form) {
+  await linkGithub(form);
+  await simulateMerge();
 }
 
 function renderSignoffControls(data) {
@@ -856,9 +1221,10 @@ function renderSignoffControls(data) {
     btn.hidden = true;
     hint.hidden = !milestone?.requiresManualSignoff;
     hint.textContent = paid && milestone?.requiresManualSignoff
-      ? 'Sarah signed off. PayPal payout is recorded on the next step.'
+      ? 'Sarah signed off. The payout is on the next step.'
       : '';
     if (!hint.textContent) hint.hidden = true;
+    syncWorkActions();
     return;
   }
   btn.hidden = false;
@@ -866,8 +1232,24 @@ function renderSignoffControls(data) {
   const sarahId = state.users.sarah?.id;
   const actingAsClient = sarahId && state.userId === sarahId;
   hint.textContent = actingAsClient
-    ? 'AI passed the diff. Press sign-off to pay the full milestone. There is no auto-timeout.'
-    : 'AI passed the diff. Switch to Sarah (client) and press sign-off to pay. Rohan cannot release this himself.';
+    ? 'The AI check passed. Press Approve and pay. There is no timeout.'
+    : 'The AI check passed. Switch to Sarah and press Approve and pay.';
+  syncWorkActions();
+}
+
+function syncWorkActions() {
+  const submit = $('#btn-submit-work');
+  const next = $('#btn-work-next');
+  const signoff = $('#btn-signoff');
+  const hint = $('#work-hint');
+  const waiting = Boolean(signoff && !signoff.hidden);
+  const ran = state.workChecked || ['PASSED', 'PAID', 'RELEASED', 'FAILED'].includes(state.lastMilestone?.status);
+  if (submit) submit.hidden = waiting || ran;
+  if (next) next.hidden = !(ran && !waiting);
+  if (!hint) return;
+  if (waiting) hint.textContent = 'Next: switch to Sarah and press Approve and pay.';
+  else if (ran) hint.textContent = 'Next: press See payout.';
+  else hint.textContent = 'Next: press Submit work. It links the pull request and runs the AI check.';
 }
 
 async function clientSignoff() {
@@ -886,7 +1268,7 @@ async function clientSignoff() {
     milestone: state.lastMilestone,
     awaitingClientSignoff: false,
   });
-  showLog('#log-audit', data);
+  showLog('#log-work', data);
   await refreshNotifications({ toastNew: true });
 }
 
@@ -966,7 +1348,7 @@ function escapeHtml(s) {
 async function refreshPaid() {
   if (!state.projectId || !state.userId) return;
   try {
-    const { project } = await api(`/api/projects/${state.projectId}`);
+    const { project } = await readProject();
     const milestone =
       project.milestones?.find((m) => m.id === state.milestoneId) || project.milestones?.[0];
     state.lastMilestone = milestone || null;
@@ -1058,7 +1440,7 @@ function renderDisputeOutcome(payload) {
 }
 
 async function refreshDisputeOutcome() {
-  if (!state.projectId || !state.userId) return null;
+  if (!state.projectId || !state.userId || !isPartyUser()) return null;
   try {
     const data = await api(`/api/projects/${state.projectId}/disputes`);
     renderDisputeOutcome(data);
@@ -1191,8 +1573,7 @@ function renderCounselorCase(row) {
             </label>
             <ul data-preview-lines hidden></ul>
             <div class="action-row">
-              <button type="button" class="btn secondary" data-preview>Preview split</button>
-              <button type="submit" class="btn primary" data-confirm disabled>Confirm decision</button>
+              <button type="submit" class="btn primary" data-confirm>Confirm decision</button>
             </div>
           </form>`
     }
@@ -1267,6 +1648,49 @@ async function confirmCounselorDecision(form) {
   return data;
 }
 
+function agencyPanelApi() {
+  return globalThis.AegisAgencyPanel;
+}
+
+function paintAgency(dashboard) {
+  const apiPanel = agencyPanelApi();
+  const body = $('#agency-body');
+  if (!apiPanel || !body || !dashboard) return;
+  const note = $('#agency-seed-note');
+  if (note) note.textContent = state.agencySeedNote || '';
+  if (!dashboard.projects || !dashboard.projects.length) {
+    body.innerHTML =
+      '<p class="field-hint">No projects yet. Load demo agency adds sample rows for Escrow eSports Studio. A real Sarah and Rohan project shows up here as well.</p>';
+    return;
+  }
+  body.innerHTML = apiPanel.render(dashboard);
+}
+
+async function refreshAgency() {
+  try {
+    const dashboard = await api('/api/admin/demo/agency', { auth: false, demo: true });
+    paintAgency(dashboard);
+  } catch (err) {
+    const note = $('#agency-seed-note');
+    if (note) note.textContent = err.message || 'Could not load the agency preview.';
+  }
+}
+
+async function seedAgency() {
+  const data = await api('/api/admin/demo/agency/seed', {
+    method: 'POST',
+    auth: false,
+    demo: true,
+  });
+  const created = data.seed?.createdProjects || 0;
+  const existing = data.seed?.existingProjects || 0;
+  state.agencySeedNote = created
+    ? `Loaded ${created} sample project${created === 1 ? '' : 's'}.`
+    : `Already loaded. ${existing} sample project${existing === 1 ? '' : 's'} left as they were.`;
+  paintAgency(data.dashboard);
+  return data;
+}
+
 function bindUi() {
   renderRail();
 
@@ -1274,8 +1698,25 @@ function bindUi() {
     const goBtn = e.target.closest('[data-go]');
     if (goBtn) {
       e.preventDefault();
+      if (goBtn.dataset.openDispute === '1') {
+        const box = $('#dispute-more');
+        if (box) box.open = true;
+      }
       go(goBtn.dataset.go);
     }
+  });
+
+  $('#btn-start-demo')?.addEventListener('click', async () => {
+    const btn = $('#btn-start-demo');
+    if (btn) btn.disabled = true;
+    try {
+      await seedUsers();
+    } catch (err) {
+      showLog('#log-users', err.data || err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+    go('users');
   });
 
   $('#btn-seed-users').addEventListener('click', async () => {
@@ -1286,26 +1727,68 @@ function bindUi() {
     }
   });
 
+  $('#btn-load-agency')?.addEventListener('click', async () => {
+    try {
+      await seedAgency();
+    } catch (err) {
+      const note = $('#agency-seed-note');
+      if (note) note.textContent = err.message || 'Could not load the agency preview.';
+    }
+  });
+
   $all('.persona').forEach((btn) => {
-    btn.addEventListener('click', () => selectPersona(btn.dataset.persona));
+    btn.addEventListener('click', () => selectPersona(btn.dataset.persona, { navigate: true }));
   });
 
   $('#btn-switch-user').addEventListener('click', () => go('users'));
 
-  $('#btn-verify-id').addEventListener('click', async () => {
-    try {
-      await verifyIdentity();
-    } catch (err) {
-      showLog('#log-verify', err.data || err.message);
-    }
+  $('#kyc-phone')?.addEventListener('input', (event) => {
+    event.target.dataset.autofilled = 'user';
   });
 
+  $('#btn-kyc-email-verify')?.addEventListener('click', async () => {
+    try {
+      await verifyKycEmail();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-phone-verify')?.addEventListener('click', async () => {
+    try {
+      await verifyKycPhone();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-id-verify')?.addEventListener('click', async () => {
+    try {
+      await verifyKycId();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-quick')?.addEventListener('click', async () => {
+    try {
+      await quickVerifyKyc();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
   $('#btn-consent').addEventListener('click', async () => {
     try {
       await grantConsent();
     } catch (err) {
       showLog('#log-verify', err.data || err.message);
     }
+  });
+
+  $('#btn-project-again')?.addEventListener('click', () => {
+    const create = $('#btn-create-project');
+    const next = $('#btn-project-next');
+    if (create) create.hidden = false;
+    if (next) next.hidden = true;
+    const hint = $('#project-hint');
+    if (hint) hint.textContent = 'Next: press Create project. This starts another project.';
   });
 
   $('#form-project').addEventListener('submit', async (e) => {
@@ -1350,14 +1833,12 @@ function bindUi() {
     }
   });
 
-  $all('[data-path]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      try {
-        await previewExit(btn.dataset.path);
-      } catch (err) {
-        showLog('#log-exit', err.data || err.message);
-      }
-    });
+  $('#btn-exit-preview')?.addEventListener('click', async () => {
+    try {
+      await previewExit($('#exit-path')?.value || 'MUTUAL');
+    } catch (err) {
+      showLog('#log-exit', err.data || err.message);
+    }
   });
 
   $('#btn-exit-confirm')?.addEventListener('click', async () => {
@@ -1371,8 +1852,12 @@ function bindUi() {
   $('#btn-exit-dismiss')?.addEventListener('click', () => {
     const box = $('#exit-preview');
     if (box) box.hidden = true;
+    const previewBtn = $('#btn-exit-preview');
+    if (previewBtn) previewBtn.hidden = false;
     state.pendingExitPath = null;
     state.pendingExitPreview = null;
+    const hint = $('#exit-hint');
+    if (hint) hint.textContent = 'Next: choose who is leaving, press Preview exit, then Confirm.';
   });
 
   $('#btn-cancel-request')?.addEventListener('click', async () => {
@@ -1422,12 +1907,20 @@ function bindUi() {
     }
   });
 
-  $('#form-github').addEventListener('submit', async (e) => {
+  $('#form-work')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try {
-      await linkGithub(e.target);
+      await submitWork(e.target);
     } catch (err) {
-      showLog('#log-github', err.data || err.message);
+      showLog('#log-work', err.data || err.message);
+    }
+  });
+
+  $('#btn-work-again')?.addEventListener('click', async () => {
+    try {
+      await simulateMerge();
+    } catch (err) {
+      showLog('#log-work', err.data || err.message);
     }
   });
 
@@ -1435,7 +1928,7 @@ function bindUi() {
     try {
       await clientSignoff();
     } catch (err) {
-      showLog('#log-audit', err.data || err.message);
+      showLog('#log-work', err.data || err.message);
     }
   });
 
@@ -1443,19 +1936,9 @@ function bindUi() {
     try {
       await loadEvidence();
     } catch (err) {
-      showLog('#log-audit', err.data || err.message);
+      showLog('#log-work', err.data || err.message);
     }
   });
-
-  $('#btn-simulate').addEventListener('click', async () => {
-    try {
-      await simulateMerge();
-    } catch (err) {
-      showLog('#log-audit', err.data || err.message);
-    }
-  });
-
-  $('#btn-refresh-paid').addEventListener('click', () => refreshPaid());
 
   document.body.addEventListener('submit', async (e) => {
     const disputeForm = e.target.closest('[data-dispute-form]');
@@ -1480,6 +1963,13 @@ function bindUi() {
     if (decideForm) {
       e.preventDefault();
       try {
+        if (decideForm.dataset.armed !== '1') {
+          await previewCounselorDecision(decideForm);
+          decideForm.dataset.armed = '1';
+          const confirm = decideForm.querySelector('[data-confirm]');
+          if (confirm) confirm.textContent = 'Confirm — send the money';
+          return;
+        }
         await confirmCounselorDecision(decideForm);
       } catch (err) {
         showLog('#log-counselor', err.data || err.message);
@@ -1487,37 +1977,29 @@ function bindUi() {
     }
   });
 
-  $('#counselor-list')?.addEventListener('click', async (e) => {
-    const previewBtn = e.target.closest('[data-preview]');
-    if (!previewBtn) return;
-    const form = previewBtn.closest('[data-decide-form]');
+  function disarmDecision(form) {
     if (!form) return;
-    try {
-      await previewCounselorDecision(form);
-    } catch (err) {
-      showLog('#log-counselor', err.data || err.message);
-    }
-  });
-
-  $('#counselor-list')?.addEventListener('change', (e) => {
-    const form = e.target.closest('[data-decide-form]');
-    if (!form) return;
+    form.dataset.armed = '';
     const confirm = form.querySelector('[data-confirm]');
-    if (confirm) confirm.disabled = true;
+    if (confirm) confirm.textContent = 'Confirm decision';
     const percent = form.querySelector('[name="freelancerPercent"]');
     const decision = form.querySelector('input[name="decision"]:checked')?.value;
     if (percent) percent.disabled = decision !== 'SPLIT';
-  });
+  }
 
-  $('#btn-counselor-refresh')?.addEventListener('click', () => {
-    state.counselorStatus = 'OPEN';
-    refreshCounselor();
+  $('#counselor-list')?.addEventListener('change', (e) => {
+    disarmDecision(e.target.closest('[data-decide-form]'));
+  });
+  $('#counselor-list')?.addEventListener('input', (e) => {
+    const form = e.target.closest('[data-decide-form]');
+    if (!form || form.dataset.armed !== '1') return;
+    disarmDecision(form);
   });
 
   $('#btn-counselor-resolved')?.addEventListener('click', () => {
     state.counselorStatus = state.counselorStatus === 'RESOLVED' ? 'OPEN' : 'RESOLVED';
     const btn = $('#btn-counselor-resolved');
-    if (btn) btn.textContent = state.counselorStatus === 'RESOLVED' ? 'Show open' : 'Show decided';
+    if (btn) btn.textContent = state.counselorStatus === 'RESOLVED' ? 'Show open disputes' : 'Show decided disputes';
     refreshCounselor();
   });
 
@@ -1562,7 +2044,8 @@ function bindUi() {
 async function boot() {
   bindUi();
   await loadConsentAgreement();
-  const hash = (location.hash || '#landing').slice(1);
+  const rawHash = (location.hash || '#landing').slice(1);
+  const hash = STEP_ALIAS[rawHash] || rawHash;
   go(STEPS.some((s) => s.id === hash) ? hash : 'landing');
 
   try {
@@ -1584,16 +2067,16 @@ async function boot() {
         (state.users.sarah?.id ? 'sarah' : null);
       if (key) selectPersona(key);
       else if (state.userId) await refreshMe();
+      const step = STEP_ALIAS[(location.hash || '').slice(1)] || (location.hash || '').slice(1);
+      if (step === 'paid') await refreshPaid();
+      if (step === 'fund') await refreshDepositPanel();
     }
   } catch {
     // DB may be down during static preview — UI still loads
   }
 
-  if (state.projectId && state.milestoneId) {
-    $('#btn-project-next').disabled = false;
-    $('#btn-fund-next').disabled = false;
-    $('#btn-github-next').disabled = false;
-  }
+  syncUsersPrimary();
+  if (state.projectId && state.milestoneId) syncProjectActions();
 
   await refreshNotifications();
   if (state.projectId) {

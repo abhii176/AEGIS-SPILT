@@ -112,10 +112,22 @@ model User {
   locale                   String?  @default("en")
   /// PayPal sandbox/live email used as Payouts recipient for freelancers
   paypalEmail              String?  @map("paypal_email")
-  govIdVerified            Boolean  @default(false) @map("gov_id_verified")
-  /// e.g. 'digilocker', 'stripe_identity', or a regional equivalent
-  kycProvider              String?  @map("kyc_provider")
-  monitoringConsentGranted Boolean  @default(false) @map("monitoring_consent_granted")
+  govIdVerified            Boolean   @default(false) @map("gov_id_verified")
+  /// e.g. 'digilocker', 'stripe_identity', 'digilocker_sandbox', or a regional equivalent
+  kycProvider              String?   @map("kyc_provider")
+  /// How the ID gate was satisfied. The demo sandbox writes digilocker_sandbox.
+  kycMethod                String?   @map("kyc_method")
+  /// When the ID gate was marked verified.
+  kycVerifiedAt            DateTime? @map("kyc_verified_at")
+  /// Last 4 digits only. The full ID number is never stored.
+  kycIdLast4               String?   @map("kyc_id_last4")
+  /// Display mask such as "XXXX XXXX 1234".
+  kycMaskedId              String?   @map("kyc_masked_id")
+  /// Last 4 digits of the sandbox phone. The full phone number is not stored.
+  kycPhoneLast4            String?   @map("kyc_phone_last4")
+  /// In-progress sandbox step flags (booleans + last-4). Cleared after success.
+  kycSandboxProgress       Json?     @map("kyc_sandbox_progress")
+  monitoringConsentGranted Boolean   @default(false) @map("monitoring_consent_granted")
   createdAt                DateTime @default(now()) @map("created_at")
   updatedAt                DateTime @updatedAt @map("updated_at")
 

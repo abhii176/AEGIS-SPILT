@@ -15,6 +15,7 @@ Escrow marketplace where clients fund milestones via PayPal, freelancers ship on
 | **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
 | **Project chat** | Plain-text client ↔ freelancer messages per project (DB-backed; polling; allowed after cancel) |
 | **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
+| **Agency preview** | Read-only “Agency (preview)” tab. One Load demo agency button, summary cards, and a project table. White-label is marked coming soon |
 
 ## Deploy (public HTTPS for judges)
 
@@ -50,10 +51,12 @@ Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until session
 ### Demo UI (judges)
 
 1. `npm start` → open `http://localhost:3000`
-2. **Seed Sarah & Rohan** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
-3. Switch user → verify gov ID + monitoring consent
-4. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
-5. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
+2. Press **Start demo**. That loads Sarah, Rohan, and Maya (`X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`).
+3. Press Sarah’s card. Press **Quick verify (judges)**, tick the agreement, press **Sign agreement**, then **Continue to the project**. The full DigiLocker sandbox is behind **Show full DigiLocker flow** (one Verify button per step, code `123456`). Stripe Identity is a coming-soon note.
+4. Press **Create project**, then **Continue to funding**. Open **More** and turn on **Capture immediately** for a local mock. Press **Fund escrow**. Switch to Rohan and press **Pay security deposit**.
+5. Press **Continue to work**, then **Submit work**. That links the pull request and runs the AI check. Press **See payout**.
+6. Dispute path: on Project open **Raise a dispute**. Switch to Maya, open **Counselor**, and press **Confirm decision** twice (preview, then send).
+7. Open **Agency** and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
 
 PayPal browser return/cancel (no auth header):
 
@@ -65,9 +68,17 @@ PayPal browser return/cancel (no auth header):
 ```
 GET  /                                 # demo UI (static)
 GET  /api/auth/me                      # stub user for X-User-Id
-POST /api/auth/verify-identity
-GET  /api/auth/verify-identity/callback/digilocker
-GET  /api/auth/verify-identity/callback/stripe
+POST /api/auth/verify-identity                 # older scaffold; does not set the ID flag
+GET  /api/auth/verify-identity/callback/digilocker  # refused; use the sandbox routes
+GET  /api/auth/verify-identity/callback/stripe      # refused; Stripe Identity is roadmap
+GET  /api/auth/kyc/sandbox                      # DigiLocker-style sandbox hint (demo OTP + fake ID)
+POST /api/auth/kyc/sandbox/email/start
+POST /api/auth/kyc/sandbox/email/confirm
+POST /api/auth/kyc/sandbox/phone/start
+POST /api/auth/kyc/sandbox/phone/confirm
+POST /api/auth/kyc/sandbox/digilocker/start
+POST /api/auth/kyc/sandbox/digilocker/confirm   # sets gov ID; stores mask + last 4 only
+POST /api/auth/kyc/sandbox/quick                # one-click for Sarah, Rohan, Maya
 GET  /api/consent/agreement                # User Consent Agreement markdown (v2.0.0)
 POST /api/consent/monitoring               # { accepted, agreedName, agreedDate } → ConsentLogs
 
@@ -99,6 +110,8 @@ POST /api/notifications/mark-read          # { notificationIds } or { all: true 
 POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
 POST /api/admin/demo/users/seed            # seed Sarah + Rohan (X-Demo-Admin-Key)
 GET  /api/admin/demo/users                # list demo users (X-Demo-Admin-Key)
+GET  /api/admin/demo/agency               # agency dashboard preview (read-only, X-Demo-Admin-Key)
+POST /api/admin/demo/agency/seed          # idempotent sample agency rows (no PayPal movement)
 POST /api/admin/demo/milestones/:milestoneId/release         # gated + X-Demo-Admin-Key
 POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Admin-Key
 POST /api/merge                             # gated

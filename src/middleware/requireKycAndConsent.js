@@ -21,7 +21,8 @@ function requireKycAndConsent(req, res, next) {
         monitoring_consent_granted: monitoringConsentGranted,
       },
       actions: {
-        verifyIdentity: 'POST /api/auth/verify-identity',
+        verifyIdentity: 'POST /api/auth/kyc/sandbox/digilocker/confirm',
+        quickVerify: 'POST /api/auth/kyc/sandbox/quick',
         recordMonitoringConsent: 'POST /api/consent/monitoring',
       },
     });
