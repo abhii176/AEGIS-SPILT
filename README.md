@@ -51,11 +51,12 @@ Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until session
 ### Demo UI (judges)
 
 1. `npm start` → open `http://localhost:3000`
-2. **Seed Sarah, Rohan & Maya** (uses `X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`)
-2b. Open **Agency** in the step rail and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
-3. On Verify, use **Quick verify (judges)** or walk the DigiLocker-style sandbox (email OTP, phone OTP, sandbox ID). Then sign the consent agreement. Stripe Identity stays disabled.
-4. Create project + milestone → fund vault (open PayPal `approvalUrl`, or check auto-capture for mock)
-5. Link GitHub → **Simulate merge** → see AI audit PASS/FAIL + paid status
+2. Press **Start demo**. That loads Sarah, Rohan, and Maya (`X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`).
+3. Press Sarah’s card. Press **Quick verify (judges)**, tick the agreement, press **Sign agreement**, then **Continue to the project**. The full DigiLocker sandbox is behind **Show full DigiLocker flow** (one Verify button per step, code `123456`). Stripe Identity is a coming-soon note.
+4. Press **Create project**, then **Continue to funding**. Open **More** and turn on **Capture immediately** for a local mock. Press **Fund escrow**. Switch to Rohan and press **Pay security deposit**.
+5. Press **Continue to work**, then **Submit work**. That links the pull request and runs the AI check. Press **See payout**.
+6. Dispute path: on Project open **Raise a dispute**. Switch to Maya, open **Counselor**, and press **Confirm decision** twice (preview, then send).
+7. Open **Agency** and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
 
 PayPal browser return/cancel (no auth header):
 
