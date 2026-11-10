@@ -1,6 +1,7 @@
 const { prisma } = require('../../lib/prisma');
 const { env } = require('../../config/env');
 const { createPaypalService } = require('./index');
+const { captureIdFromPaypalBody, usableCaptureId } = require('./captureIds');
 const { createNotificationService } = require('../notifications');
 const { assertProjectNotCancelled, assertPayoutAllowed } = require('../../lib/projectStatus');
 const { releaseBlockedAwaitingClientSignoff } = require('../../lib/clientSignoff');
@@ -229,7 +230,15 @@ function createEscrowService({
 
     if (autoCapture) {
       const captured = await paypal.captureOrder(order.id);
-      captureId = captured.captureId;
+      captureId = usableCaptureId({ captureId: captured.captureId, orderId: order.id });
+      if (!captureId) {
+        const err = new Error(
+          'PayPal completed the order without a capture id, so the vault was not marked funded.'
+        );
+        err.status = 422;
+        err.code = 'capture_id_missing';
+        throw err;
+      }
       status = 'CAPTURED';
       orderStatus = captured.status;
     }
@@ -362,10 +371,21 @@ function createEscrowService({
       const existing = await paypal.getOrder(targetOrderId);
       const status = String(existing.status || '').toUpperCase();
       if (status === 'COMPLETED') {
-        const captureId =
-          existing.raw?.purchase_units?.[0]?.payments?.captures?.[0]?.id ||
-          fund.paypalCaptureId ||
-          existing.id;
+        const captureId = usableCaptureId({
+          captureId:
+            captureIdFromPaypalBody(existing.raw) ||
+            captureIdFromPaypalBody(existing) ||
+            fund.paypalCaptureId,
+          orderId: targetOrderId,
+        });
+        if (!captureId) {
+          const err = new Error(
+            'PayPal says this order is complete, but there is no capture id to refund later.'
+          );
+          err.status = 422;
+          err.code = 'capture_id_missing';
+          throw err;
+        }
         const updatedFund = await markFundCaptured({ fund, orderId: targetOrderId, captureId });
         return {
           vaultFund: updatedFund,
@@ -385,10 +405,22 @@ function createEscrowService({
     }
 
     const captured = await paypal.captureOrder(targetOrderId);
+    const captureId = usableCaptureId({
+      captureId: captured.captureId,
+      orderId: targetOrderId,
+    });
+    if (!captureId) {
+      const err = new Error(
+        'PayPal completed the order without a capture id, so the vault was not marked funded.'
+      );
+      err.status = 422;
+      err.code = 'capture_id_missing';
+      throw err;
+    }
     const updatedFund = await markFundCaptured({
       fund,
       orderId: targetOrderId,
-      captureId: captured.captureId,
+      captureId,
     });
 
     return { vaultFund: updatedFund, alreadyCaptured: false, paypal: captured };

@@ -1426,11 +1426,14 @@ function renderDisputeOutcome(payload) {
     });
     return;
   }
+  const settlement = dispute.transferIds?.notice
+    ? `<p>${escapeHtml(dispute.transferIds.notice)}</p>`
+    : '';
   const money =
     dispute.status === 'RESOLVED'
       ? `<p>Freelancer ${usd(dispute.freelancerAmountCents)} · Client refund ${usd(dispute.clientRefundCents)} · Deposit ${escapeHtml(dispute.depositDisposition || 'NONE')} ${dispute.depositCents ? usd(dispute.depositCents) : ''}</p>
          <p>Decided by ${escapeHtml(dispute.decidedByLabel || 'counselor')} · ${escapeHtml(dispute.decision || '')}${dispute.freelancerPercent != null ? ` (${dispute.freelancerPercent}%)` : ''}</p>
-         <p>${escapeHtml(dispute.note || '')}</p>`
+         <p>${escapeHtml(dispute.note || '')}</p>${settlement}`
       : `<p>Payout and exit are paused until the counselor decides.</p><p>${escapeHtml(dispute.reason || '')}</p>`;
   const html = `<h3>Dispute ${escapeHtml(dispute.status)}</h3>${money}`;
   boxes.forEach((box) => {
@@ -1473,7 +1476,8 @@ function renderCounselorCase(row) {
   const recordingCard = globalThis.AegisCallRecording
     ? globalThis.AegisCallRecording.render(recordings)
     : '';
-  const decided = row.status === 'RESOLVED';
+  const moneyPending = row.transferIds && row.transferIds.pending === true;
+  const decided = row.status === 'RESOLVED' && !moneyPending;
   const consentLine = (party, label) => {
     if (!party) return `<p>${label}: no consent log</p>`;
     const when = party.agreedAt ? new Date(party.agreedAt).toLocaleString() : '—';
@@ -1502,6 +1506,7 @@ function renderCounselorCase(row) {
             : `In the vault: ${usd(vault.remainingVaultCents)} remaining (${usd(vault.capturedVaultCents)} captured, ${usd(vault.paidOutCents)} already paid).`
         }</p>
         <p>Deposit: ${escapeHtml(deposit.status || '—')} · ${usd(deposit.amountCents)}</p>
+        ${vault.fundingNote ? `<p>${escapeHtml(vault.fundingNote)}</p>` : ''}
       </section>
       <section class="evidence-card">
         <h4>AI audit</h4>
@@ -1543,16 +1548,24 @@ function renderCounselorCase(row) {
         ? `<div class="dispute-outcome"><h3>${escapeHtml(row.decision || 'Decided')}</h3>
             <p>${escapeHtml(row.decidedByLabel || '')} · Freelancer ${usd(row.freelancerAmountCents)} · Client ${usd(row.clientRefundCents)} · Deposit ${escapeHtml(row.depositDisposition || 'NONE')}</p>
             <p>${escapeHtml(row.note || '')}</p>
-            <p class="field-hint">The milestone is closed so it cannot be paid a second time. The amounts above are what moved${
-              row.transferIds?.freelancerPayoutBatchId
-                ? `. Payout ${escapeHtml(row.transferIds.freelancerPayoutBatchId)}`
-                : ''
-            }${
-              row.transferIds?.vaultRefunds?.[0]?.refundId
-                ? `. Refund ${escapeHtml(row.transferIds.vaultRefunds[0].refundId)}`
-                : ''
-            }.</p></div>`
-        : `<form class="dispute-form" data-decide-form>
+            <p class="field-hint">${
+              row.transferIds?.notice
+                ? escapeHtml(row.transferIds.notice)
+                : `The milestone is closed so it cannot be paid a second time. The amounts above are what moved${
+                    row.transferIds?.freelancerPayoutBatchId
+                      ? `. Payout ${escapeHtml(row.transferIds.freelancerPayoutBatchId)}`
+                      : ''
+                  }${
+                    row.transferIds?.vaultRefunds?.[0]?.refundId
+                      ? `. Refund ${escapeHtml(row.transferIds.vaultRefunds[0].refundId)}`
+                      : ''
+                  }.`
+            }</p></div>`
+        : `${
+            moneyPending
+              ? '<p>The last attempt did not finish. Confirm again to finish the same decision.</p>'
+              : ''
+          }<form class="dispute-form" data-decide-form>
             <fieldset>
               <legend class="sr-only">Counselor decision</legend>
               <label class="check-inline"><input type="radio" name="decision" value="RELEASE_TO_FREELANCER" /> Release to freelancer</label>

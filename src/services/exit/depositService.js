@@ -1,6 +1,7 @@
 const { prisma } = require('../../lib/prisma');
 const { env } = require('../../config/env');
 const { createPaypalService } = require('../paypal');
+const { captureIdFromPaypalBody, usableCaptureId } = require('../paypal/captureIds');
 const { createNotificationService } = require('../notifications');
 const {
   resolveDepositAmountCents,
@@ -133,7 +134,15 @@ function createDepositService({
 
     if (autoCapture) {
       const captured = await paypal.captureOrder(order.id);
-      captureId = captured.captureId;
+      captureId = usableCaptureId({ captureId: captured.captureId, orderId: order.id });
+      if (!captureId) {
+        const err = new Error(
+          'PayPal completed the deposit without a capture id, so it was not marked held.'
+        );
+        err.status = 422;
+        err.code = 'capture_id_missing';
+        throw err;
+      }
       status = 'CAPTURED';
       orderStatus = captured.status;
     }
@@ -271,10 +280,21 @@ function createDepositService({
       const existing = await paypal.getOrder(targetOrderId);
       const status = String(existing.status || '').toUpperCase();
       if (status === 'COMPLETED') {
-        const captureId =
-          existing.raw?.purchase_units?.[0]?.payments?.captures?.[0]?.id ||
-          deposit.paypalCaptureId ||
-          existing.id;
+        const captureId = usableCaptureId({
+          captureId:
+            captureIdFromPaypalBody(existing.raw) ||
+            captureIdFromPaypalBody(existing) ||
+            deposit.paypalCaptureId,
+          orderId: targetOrderId,
+        });
+        if (!captureId) {
+          const err = new Error(
+            'PayPal says this deposit order is complete, but there is no capture id to settle later.'
+          );
+          err.status = 422;
+          err.code = 'capture_id_missing';
+          throw err;
+        }
         const updated = await markDepositCaptured({
           deposit,
           orderId: targetOrderId,
@@ -294,10 +314,22 @@ function createDepositService({
     }
 
     const captured = await paypal.captureOrder(targetOrderId);
+    const captureId = usableCaptureId({
+      captureId: captured.captureId,
+      orderId: targetOrderId,
+    });
+    if (!captureId) {
+      const err = new Error(
+        'PayPal completed the deposit without a capture id, so it was not marked held.'
+      );
+      err.status = 422;
+      err.code = 'capture_id_missing';
+      throw err;
+    }
     const updated = await markDepositCaptured({
       deposit,
       orderId: targetOrderId,
-      captureId: captured.captureId,
+      captureId,
     });
     return { deposit: updated, alreadyCaptured: false, paypal: captured };
   }

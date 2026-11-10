@@ -1,4 +1,5 @@
 const { createDisputeService } = require('../services/disputes/disputeService');
+const { toFriendlyPaypalError } = require('../services/paypal/captureIds');
 
 const disputes = createDisputeService();
 
@@ -73,12 +74,14 @@ async function decideDispute(req, res, next) {
     });
     return res.status(200).json({
       ...result,
-      note: result.alreadyResolved
-        ? 'Decision already recorded (idempotent).'
-        : 'Counselor decision recorded. Vault and deposit moved through PayPal.',
+      note:
+        result.notice ||
+        (result.alreadyResolved
+          ? 'Decision already recorded (idempotent).'
+          : 'Counselor decision recorded. Vault and deposit moved through PayPal.'),
     });
   } catch (err) {
-    return next(err);
+    return next(toFriendlyPaypalError(err));
   }
 }
 
