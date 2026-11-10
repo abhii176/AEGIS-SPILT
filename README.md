@@ -1,268 +1,149 @@
 # Aegis-Split
 
-Escrow marketplace where clients fund milestones via PayPal, freelancers ship on GitHub, and AI audits merges before payout.
+PayPal Hackathon 2026 · Team Escrow eSports — Mayank Kumar Agarwal, Kavya Chavda, Abhiraj Chhaparwal, Mohit Khoiwal, Krishna Chaudhari
 
-## What's built
+**Live demo:** [https://aegis-split.onrender.com](https://aegis-split.onrender.com)
 
-| Slice | What |
-|-------|------|
-| **KYC + consent** | DigiLocker / Stripe Identity scaffolds, `ConsentLogs`, gate middleware |
-| **Projects + milestones** | Client/freelancer projects, milestones with acceptance criteria + amounts |
-| **PayPal escrow** | Orders API lock (fund vault); Payouts API release; admin/demo trigger |
-| **GitHub merge** | Link repo/PR to milestone; webhook HMAC; AI auditor → PayPal release |
-| **AI auditor** | Structured criteria checks (LLM if keyed, else deterministic heuristics). Optional client sign-off holds payout until the client approves |
-| **Notifications** | In-app FUNDED / AUDIT_PASSED|FAILED / PAID / exit+deposit alerts (idempotent); demo bell + toasts |
-| **Exit & penalties** | Mutual cancel, client one-sided penalty, freelancer walk-away; security deposit; consent v2 |
-| **Project chat** | Plain-text client ↔ freelancer messages per project (DB-backed; polling; allowed after cancel) |
-| **Demo UI** | Static judge walkthrough at `/` (Rohan ↔ Sarah) wired to the Express API |
-| **Agency preview** | Read-only “Agency (preview)” tab. One Load demo agency button, summary cards, and a project table. White-label is marked coming soon |
+Aegis-Split holds a freelance milestone in PayPal until a merged pull request meets the locked criteria, then pays the freelancer in full. Platform fee: 0%.
 
-## Deploy (public HTTPS for judges)
+## The problem
 
-See **[DEPLOY.md](./DEPLOY.md)** for one-click paths:
+A client can disappear after the work lands. A freelancer can disappear after the client has paid. The scope can change after both sides agreed the words. A platform fee and an opaque dispute make that worse.
 
-- **Render Blueprint** (`render.yaml`) + **Neon** free Postgres — preferred
-- **Railway** (`railway.toml` + Dockerfile)
-- **Fly.io** (`fly.toml`) when `FLY_API_TOKEN` is available
+## How Aegis-Split solves it
 
-Docker image runs `prisma migrate deploy` on boot. Set `PAYPAL_MOCK` / credentials in the host dashboard (`render.yaml` keeps them `sync: false` so Blueprint sync cannot force mock). `DEMO_ADMIN_KEY` defaults to `hackathon-demo-key`.
+Sarah funds one milestone with PayPal. That capture stays in escrow. Rohan pays a security deposit (10% of the milestone by default). The acceptance criteria are saved with the milestone. A merged GitHub pull request is checked against those words. Objective work that passes is paid in full through PayPal Payouts. Subjective work can wait until Sarah presses **Approve and pay**. If they disagree, either person raises a dispute and Maya (the counselor) releases, refunds, or splits the escrow. Leaving early follows the rules below. Aegis-Split takes no fee.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://dashboard.render.com/blueprints/new?repo=https://github.com/abhii176/AEGIS-SPILT)
+## Judge demo
 
-## Setup
+Open the [live demo](https://aegis-split.onrender.com). Follow the **Next:** line on each screen. The top rail is Home, People, Verify, Project, Fund, Work, Paid, Exit, Counselor, Agency.
+
+1. **Start demo.** Press **Start demo**. That loads Sarah Chen (client), Rohan Mehta (freelancer), and Maya Rao (counselor), and selects Sarah. Press **Sarah Chen**.
+2. **Verify and sign.** Press **Quick verify (judges)**. Tick the agreement (the name and date are filled in). Press **Sign agreement**, then **Continue to the project**.
+3. **Create the project.** Leave the sample (Auth service MVP, $250). Press **Create project**, then **Continue to funding**. Leave **Needs manual client sign-off** off, under **More options**, so a passing check pays immediately.
+4. **Fund escrow, then the deposit.** Press **Fund escrow**. On the live site, press **Open PayPal to approve** and finish the PayPal sandbox checkout. The deposit button belongs to Rohan. Press **Switch**, choose **Rohan Mehta**, open **Fund**, and press **Pay security deposit** (then **Open PayPal to approve the deposit**). Press **Continue to work**. The sample milestone is $250, so the default deposit is $25.
+5. **Submit work.** Leave repo `demo/aegis-auth` and PR `1`. Press **Submit work**. That links the pull request and runs the check. Press **See payout**.
+6. **Paid.** The screen shows the full milestone. Aegis-Split takes no fee. A held deposit is returned to Rohan when the milestone is paid.
+
+On a local mock with no PayPal buyer, open **More** on Fund and turn on **Capture immediately (local demo only)** before the two payment buttons.
+
+**Full DigiLocker sandbox.** On Verify, open **Show full DigiLocker flow**. The sandbox code is already `123456` for email, phone, and government ID. Sarah’s sandbox demo ID is `234567890124` (the form fills it in; it is a checksum demo number). Press **Verify email**, **Verify phone**, then **Verify government ID**. The flow stays inside this app. Stripe Identity is marked coming soon.
+
+**Optional dispute.** On Project, open **Raise a dispute** and press **Raise dispute**. Payout and exit wait until Maya decides. Press **Switch**, choose **Maya Rao**, and open **Counselor**. The case includes the chat, the audit, the diff, and **Call recording (preview - sample)** (sample audio and a transcript). Choose **Release to freelancer**, **Refund client**, or **Split**, write a short note, and press **Confirm decision**. The first press shows the money. The second press sends it.
+
+**Optional agency.** Open **Agency** and press **Load demo agency**. Sample rows are marked Sample. A Sarah and Rohan project is marked Live. This screen does not move money. White-label is marked coming soon.
+
+## Features
+
+| Feature | Status |
+| --- | --- |
+| PayPal Orders escrow for each milestone | Live (sandbox) |
+| PayPal Payouts for the full milestone, 0% platform fee | Live (sandbox) |
+| Freelancer security deposit, default 10% | Live (sandbox) |
+| Early exit: mutual cancel, client penalty (default 50%), freelancer walk-away | Live (sandbox) |
+| Optional client sign-off before payout | Live (sandbox) |
+| Merged-PR check against locked criteria (model if a key is set, otherwise a keyword check) | Live (sandbox) |
+| Project text chat and in-app alerts (fund, audit, pay, exit, deposit, dispute) | Live (sandbox) |
+| Counselor panel: Release, Refund, or Split (Maya is a seeded demo user) | Live (sandbox) |
+| DigiLocker-style sandbox KYC, Quick verify, and signed consent | Demo preview |
+| Agency dashboard (Escrow eSports Studio, read only) | Demo preview |
+| Call recording (preview - sample) | Demo preview |
+| Multi-sig vault | Roadmap |
+| Live DigiLocker and Stripe Identity | Roadmap |
+| Agora calls, Whisper transcripts, and S3 storage | Roadmap |
+| White-label and multi-seat billing | Roadmap |
+| Off-platform chat detection and a legal workflow | Roadmap |
+| Real login (the demo sends `X-User-Id`) | Roadmap |
+
+## How money moves
+
+Amounts are integer cents. Percentages use floor, so a split never invents a cent.
+
+- **Escrow.** **Fund escrow** creates a PayPal order for the milestone. After Sarah approves, the return URL captures it.
+- **Deposit.** **Pay security deposit** is a second PayPal order. The default is 10% of the milestone total (`$250` → `$25`). It stays held until the milestone is paid, the project exits, or Maya decides a dispute.
+- **Payout.** A passing check on an objective milestone pays the full amount to Rohan and returns the deposit. With sign-off on, the milestone waits until Sarah presses **Approve and pay**. A failed check does not pay.
+- **Dispute.** Release pays the remaining vault to Rohan. Refund sends it back to Sarah. Split pays Rohan the chosen percent (default 50%) and refunds the rest. The deposit returns to Rohan unless **Freelancer at fault** is checked, which forfeits it to Sarah.
+- **Early exit.** From Paid, open **Cancel or exit**, press **Preview exit**, then **Confirm**.
+
+| Who leaves | Unspent escrow | Deposit |
+| --- | --- | --- |
+| Both agree | 100% back to Sarah | Returned to Rohan |
+| Sarah cancels alone | Default 50% to Rohan; the rest back to Sarah | Returned to Rohan |
+| Rohan walks away | 100% back to Sarah | Forfeited to Sarah |
+
+```mermaid
+flowchart TD
+  fund[Sarah funds the milestone] --> escrow[PayPal Orders escrow]
+  deposit[Rohan pays the security deposit] --> held[Deposit held]
+  escrow --> next{What happens next}
+  next -->|Merged PR passes| paid[Full payout via PayPal Payouts]
+  next -->|Sign-off is on| signoff[Sarah presses Approve and pay]
+  signoff --> paid
+  paid --> back[Deposit returned to Rohan]
+  next -->|Dispute| maya[Maya: Release, Refund, or Split]
+  next -->|Both cancel| mutual[Vault refunded and deposit returned]
+  next -->|Sarah cancels alone| penalty[Penalty share to Rohan, rest refunded, deposit returned]
+  next -->|Rohan walks away| forfeit[Vault refunded and deposit paid to Sarah]
+```
+
+A local mock simulates order ids, payouts, and refunds. On PayPal sandbox, a refund succeeds only while PayPal still allows that capture to be refunded.
+
+## Tech stack
+
+The browser demo and the API are one Node.js process. Express serves `public/` and `/api`. Prisma stores projects, escrow, deposits, audits, chat, and disputes in PostgreSQL. The live site uses Neon. Money calls use PayPal Orders v2, Payouts, and capture refunds. **Submit work** links the sample repo, then runs a demo merge whose diff includes the acceptance criteria so the keyword check can pass without a public GitHub URL. A real `pull_request` webhook checks `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is set.
+
+The auditor calls GPT-4o mini when `OPENAI_API_KEY` is set, otherwise Claude 3.5 Haiku when `ANTHROPIC_API_KEY` is set, otherwise a keyword check of the diff. The Render blueprint selects the keyword check. Picking a person sets the `X-User-Id` header. Real login is on the roadmap.
+
+## Run locally
+
+Prerequisites: Node.js 18 or newer, npm, and PostgreSQL.
 
 ```bash
 cp .env.example .env
-# set DATABASE_URL, KYC placeholders, PayPal sandbox credentials,
-# and GITHUB_WEBHOOK_SECRET / GITHUB_TOKEN (or use demo simulate-merge)
-# or set PAYPAL_MOCK=true for local demo without PayPal credentials
-# DEMO_ADMIN_KEY defaults to hackathon-demo-key (simulate-merge + seed users)
 npm install
-npx prisma migrate deploy
-# or: npx prisma migrate dev
+npx prisma migrate dev
 npm start
-# open http://localhost:3000  — demo UI + API on the same origin
-# (or: npm run dev for watch mode)
-# production-style: npm run start:prod  (migrate deploy + start)
 ```
 
-Auth is stubbed: send `X-User-Id: <user cuid>` on protected routes until sessions land. The demo UI sets this when you pick Sarah or Rohan.
+Open [http://localhost:3000](http://localhost:3000).
 
-### Demo UI (judges)
+`npx prisma migrate deploy` is what the Docker image runs against an existing database. `npm run dev` restarts on file changes. `npm test` runs the unit tests.
 
-1. `npm start` → open `http://localhost:3000`
-2. Press **Start demo**. That loads Sarah, Rohan, and Maya (`X-Demo-Admin-Key` / `DEMO_ADMIN_KEY`).
-3. Press Sarah’s card. Press **Quick verify (judges)**, tick the agreement, press **Sign agreement**, then **Continue to the project**. The full DigiLocker sandbox is behind **Show full DigiLocker flow** (one Verify button per step, code `123456`). Stripe Identity is a coming-soon note.
-4. Press **Create project**, then **Continue to funding**. Open **More** and turn on **Capture immediately** for a local mock. Press **Fund escrow**. Switch to Rohan and press **Pay security deposit**.
-5. Press **Continue to work**, then **Submit work**. That links the pull request and runs the AI check. Press **See payout**.
-6. Dispute path: on Project open **Raise a dispute**. Switch to Maya, open **Counselor**, and press **Confirm decision** twice (preview, then send).
-7. Open **Agency** and press **Load demo agency**. Sample rows are marked Sample. Live Sarah/Rohan projects are marked Live. White-label is a coming-soon note.
+### Environment variables
 
-PayPal browser return/cancel (no auth header):
+Names only. Copy `.env.example` and fill values there. Do not commit secrets.
 
-- Return / capture: `GET /api/vault/paypal/return?token=ORDER_ID`
-- Cancel: `GET /api/vault/paypal/cancel?token=ORDER_ID`
+- **Required:** `DATABASE_URL`
+- **Server:** `PORT`, `NODE_ENV`, `APP_BASE_URL`
+- **PayPal:** `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE`, `PAYPAL_MOCK`, `PAYPAL_AUTO_CAPTURE`, `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL`, `PAYPAL_BUYER_EMAIL`, `PAYPAL_PAYOUT_EMAIL`, `PAYPAL_WEBHOOK_ID`
+- **Demo and auditor:** `DEMO_ADMIN_KEY`, `AI_AUDITOR_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AI_AUDITOR_STRICT`
+- **GitHub:** `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `GITHUB_API_BASE_URL`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_INSTALLATION_ID`
+- **Identity placeholders for a future live integration:** `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`, `DIGILOCKER_TOKEN_URL`, `DIGILOCKER_REDIRECT_URI`, `STRIPE_SECRET_KEY`, `STRIPE_IDENTITY_RETURN_URL`
+- **Other:** `MONITORING_CONSENT_VERSION`, `DEFAULT_MILESTONE_CURRENCY`
 
-## Key routes
+When `APP_BASE_URL` is empty, the app can use `RENDER_EXTERNAL_URL`, `RENDER_EXTERNAL_HOSTNAME`, `RAILWAY_PUBLIC_DOMAIN`, or `FLY_APP_NAME`.
 
-```
-GET  /                                 # demo UI (static)
-GET  /api/auth/me                      # stub user for X-User-Id
-POST /api/auth/verify-identity                 # older scaffold; does not set the ID flag
-GET  /api/auth/verify-identity/callback/digilocker  # refused; use the sandbox routes
-GET  /api/auth/verify-identity/callback/stripe      # refused; Stripe Identity is roadmap
-GET  /api/auth/kyc/sandbox                      # DigiLocker-style sandbox hint (demo OTP + fake ID)
-POST /api/auth/kyc/sandbox/email/start
-POST /api/auth/kyc/sandbox/email/confirm
-POST /api/auth/kyc/sandbox/phone/start
-POST /api/auth/kyc/sandbox/phone/confirm
-POST /api/auth/kyc/sandbox/digilocker/start
-POST /api/auth/kyc/sandbox/digilocker/confirm   # sets gov ID; stores mask + last 4 only
-POST /api/auth/kyc/sandbox/quick                # one-click for Sarah, Rohan, Maya
-GET  /api/consent/agreement                # User Consent Agreement markdown (v2.0.0)
-POST /api/consent/monitoring               # { accepted, agreedName, agreedDate } → ConsentLogs
+Leave `PAYPAL_MOCK` on for a local run without sandbox keys. Turn it off and set the sandbox client id and secret to call PayPal. Leave `PAYPAL_AUTO_CAPTURE` off for approve-then-capture. `PAYPAL_WEBHOOK_ID` is only for inbound PayPal webhooks. The approve → return → capture path works without it.
 
-POST /api/projects                          # gated (KYC + consent); optional earlyExitPenaltyPercent, freelancerDepositAmountCents
-GET  /api/projects
-GET  /api/projects/:projectId               # includes penalty %, deposit amount/status, remaining vault
-POST /api/projects/:projectId/milestones    # gated
-GET  /api/projects/:projectId/milestones
-POST /api/projects/:projectId/milestones/:milestoneId/github   # gated — link repo/PR
-POST /api/projects/:projectId/milestones/:milestoneId/release  # gated — PayPal Payouts
-POST /api/projects/:projectId/milestones/:milestoneId/signoff  # client only, after AI pass, when manual sign-off was requested
-GET  /api/projects/:projectId/evidence                         # chat + audit + diff preview (parties only)
-GET  /api/projects/:projectId/exit/preview?path=MUTUAL|CLIENT_ONESIDED|FREELANCER_WALKAWAY
-POST /api/projects/:projectId/cancel/request
-POST /api/projects/:projectId/cancel/accept
-POST /api/projects/:projectId/exit/client   # client one-sided cancel + penalty
-POST /api/projects/:projectId/exit/abandon  # freelancer walk-away + deposit forfeit
-POST /api/projects/:projectId/deposit/fund  # freelancer security deposit (Orders)
-POST /api/projects/:projectId/deposit/capture
-GET  /api/projects/:projectId/messages      # list chat (client/freelancer only)
-POST /api/projects/:projectId/messages      # { body } — non-empty, max 2000 chars; OK after cancel
+### Deploy on Render
 
-POST /api/vault/fund                       # gated — create PayPal order + approve link
-POST /api/vault/capture                    # gated — capture after buyer approval
-GET  /api/vault/paypal/return?token=...    # PayPal return — vault or deposit capture if APPROVED
-GET  /api/vault/paypal/cancel?token=...    # PayPal cancel — mark fund/deposit CANCELLED
-GET  /api/notifications                    # list for X-User-Id (optional ?unread=true)
-POST /api/notifications/mark-read          # { notificationIds } or { all: true }
-POST /api/webhooks/github                  # GitHub HMAC; pull_request closed+merged
-POST /api/admin/demo/users/seed            # seed Sarah + Rohan (X-Demo-Admin-Key)
-GET  /api/admin/demo/users                # list demo users (X-Demo-Admin-Key)
-GET  /api/admin/demo/agency               # agency dashboard preview (read-only, X-Demo-Admin-Key)
-POST /api/admin/demo/agency/seed          # idempotent sample agency rows (no PayPal movement)
-POST /api/admin/demo/milestones/:milestoneId/release         # gated + X-Demo-Admin-Key
-POST /api/admin/demo/milestones/:milestoneId/simulate-merge  # gated + X-Demo-Admin-Key
-POST /api/merge                             # gated
-GET  /health
-```
+The public demo is [https://aegis-split.onrender.com](https://aegis-split.onrender.com): a Render Docker web service, Neon Postgres, and PayPal sandbox.
 
-### Notifications
+- Blueprint file: `render.yaml`. Health check: `GET /health` (reports PayPal mock mode, and no secrets).
+- On boot, `scripts/docker-entrypoint.sh` runs `prisma migrate deploy`, then starts the server.
+- Set `DATABASE_URL` in the Render dashboard. PayPal client id, secret, `PAYPAL_MOCK`, and `PAYPAL_AUTO_CAPTURE` are dashboard-owned (`sync: false`), so a blueprint sync leaves a live sandbox setup in place.
+- The blueprint sets `PAYPAL_MODE` to sandbox.
 
-Persisted for **both** client and freelancer when:
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://dashboard.render.com/blueprints/new?repo=https://github.com/abhii176/AEGIS-SPILT)
 
-1. Vault/milestone **FUNDED** (after capture / auto-capture)
-2. AI audit completes (**AUDIT_PASSED** or **AUDIT_FAILED**)
-3. Milestone **PAID** (PayPal payout release)
+Railway and Fly.io notes are in [DEPLOY.md](./DEPLOY.md).
 
-Idempotent via `dedupeKey` (`TYPE:milestoneOrProjectId:userId`) so retries and double-capture do not spam. Demo UI: bell in the top bar + toast after fund / simulate-merge / paid refresh.
+## Powered by PayPal
 
-### Fund vault (lock escrow)
+PayPal is the money rail for escrow, deposits, payouts, and refunds.
 
-```json
-POST /api/vault/fund
-{
-  "projectId": "<project_cuid>",
-  "milestoneId": "<optional_milestone_cuid>",
-  "amountCents": 50000
-}
-```
+- **Orders** lock the client’s milestone and the freelancer’s security deposit.
+- **Payouts** pay the freelancer, pay an early-exit penalty, return a deposit, or send a forfeited deposit to the client.
+- **Capture refunds** send unspent escrow back to the client.
 
-- Omit `milestoneId` + `amountCents` → creates an order for the sum of all `PENDING` milestones.
-- Default: **no auto-capture**. Response includes `paypal.approvalUrl` / `approveUrl` — redirect the buyer (sandbox personal account) to approve, then PayPal hits `GET /api/vault/paypal/return?token=ORDER_ID` which captures only if the order is `APPROVED`.
-- Cancel path: `GET /api/vault/paypal/cancel?token=ORDER_ID` marks the vault fund `CANCELLED`.
-- Opt-in immediate capture (`PAYPAL_AUTO_CAPTURE=true` or `"capture": true`) is for mock/local demos only; live sandbox returns `ORDER_NOT_APPROVED` without buyer approval.
-- Persist after capture: `VaultFund.paypalOrderId` / `paypalCaptureId`, `Project.fundedStatus`, milestone → `FUNDED`.
-
-### Release milestone (payout)
-
-```json
-POST /api/projects/:projectId/milestones/:milestoneId/release
-{
-  "recipientEmail": "rohan-sandbox@example.com"
-}
-```
-
-Or hackathon demo trigger:
-
-```
-POST /api/admin/demo/milestones/:milestoneId/release
-X-User-Id: <client_or_freelancer>
-X-Demo-Admin-Key: hackathon-demo-key
-```
-
-Uses freelancer `paypalEmail` (or `email`) when `recipientEmail` is omitted. Sets milestone `RELEASED` → `PAID` and stores payout batch/item ids.
-
-### Create project / milestone bodies
-
-```json
-{
-  "title": "Landing page redesign",
-  "description": "Optional",
-  "freelancerId": "<user_cuid>",
-  "earlyExitPenaltyPercent": 50,
-  "freelancerDepositAmountCents": 2500
-}
-```
-
-Omit `freelancerDepositAmountCents` to default to **10% of milestone total** (floor cents) when the deposit is funded / shown.
-
-### Exit & penalties
-
-Three paths (amounts in integer cents; percentages use **floor**):
-
-| Path | Status | Vault | Deposit |
-|------|--------|-------|---------|
-| **Mutual** (request → accept) | `CANCELLED_MUTUAL` | 100% unspent → client | Returned to freelancer |
-| **Client one-sided** | `CANCELLED_BY_CLIENT` | `floor(remaining × earlyExitPenaltyPercent / 100)` → freelancer (default **50%**); rest → client | Returned to freelancer |
-| **Freelancer walk-away** | `ABANDONED_BY_FREELANCER` | 100% unspent → client | Forfeited to client |
-
-- Freelancer funds a **security deposit** via PayPal Orders (same approve → capture as vault) before work; `depositStatus`: `PENDING` → `HELD` → `RETURNED` | `FORFEITED`.
-- On successful completion (all milestones paid after audit PASS), held deposit is returned via PayPal Payouts (or mock).
-- After cancel/abandon, funding, GitHub linking, and merges are blocked.
-- Exit handlers are **idempotent** (`ExitEvent.idempotencyKey = exit:<projectId>`).
-
-### Project chat (text only)
-
-```json
-POST /api/projects/:projectId/messages
-{ "body": "Can you clarify the login acceptance criteria?" }
-```
-
-- Only the project’s **client** or **freelancer** may `GET`/`POST` messages (`403` otherwise).
-- Body must be non-empty, max **2000** characters.
-- Chat remains available after cancel/abandon for dispute context (unlike fund/GitHub/merge).
-- Demo UI: chat panel on the Project step; polls every few seconds (no WebSockets / calls).
-- UI **Cancel / Exit** shows money destinations **before** confirm.
-- Consent is the full **User Consent Agreement v2.0.0** (identity, platform-only communication, exit/penalty rules, conduct, disputes); users tick agree with **name + date**.
-
-**PayPal sandbox / mock notes:** Mock mode simulates refunds and payouts without calling PayPal. Live sandbox **capture refunds** (`POST /v2/payments/captures/{id}/refund`) only work while PayPal still allows refunding that capture; partial refunds across multiple vault captures are applied oldest-first. Payouts for penalties / deposit return / forfeit use the Payouts API (or mock batch ids). No extra env vars beyond existing PayPal credentials / `PAYPAL_MOCK`.
-
-```json
-{
-  "title": "Milestone 1",
-  "taskDescription": "Ship hero + CTA",
-  "acceptanceCriteria": "Matches Figma; Lighthouse a11y >= 90",
-  "amountCents": 25000,
-  "githubRepoFullName": "acme/landing"
-}
-```
-
-KYC + PayPal credentials use env placeholders only — see `.env.example`.
-
-### Link GitHub + merge → AI audit → payout
-
-```json
-POST /api/projects/:projectId/milestones/:milestoneId/github
-{
-  "githubRepoFullName": "acme/landing",
-  "githubPrNumber": 1
-}
-```
-
-Real webhook (needs public URL + `GITHUB_WEBHOOK_SECRET`):
-
-```
-POST /api/webhooks/github
-X-Hub-Signature-256: sha256=...
-X-GitHub-Event: pull_request
-```
-
-Handles `pull_request` `closed` with `merged=true`. Fetches PR diff via `GITHUB_TOKEN`, or accepts an embedded `diff` / `aegis_diff` stub. AI auditor (`services/aiAuditor.auditMilestone`) parses acceptance criteria into checks, scores the PR diff (OpenAI/Anthropic when `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set; otherwise deterministic heuristics), and returns `{ passed, reason, checks, report }`; on PASS calls existing escrow `releaseMilestone`.
-
-Hackathon without a public URL:
-
-```
-POST /api/admin/demo/milestones/:milestoneId/simulate-merge
-X-User-Id: <kyc_user>
-X-Demo-Admin-Key: hackathon-demo-key
-{ "diff": "optional stub; default includes acceptance keywords so audit PASSes" }
-```
-
-## Hackathon demo (PayPal sandbox + GitHub)
-
-1. Create Sarah (client) + Rohan (freelancer) users with KYC + monitoring consent; set Rohan `paypal_email` to a sandbox personal account email.
-2. Create project + Milestone 1 (`amountCents: 25000`, acceptance criteria with a few clear keywords).
-3. As Sarah: `POST /api/vault/fund` with `projectId` + `milestoneId` (sandbox client credentials, or `PAYPAL_MOCK=true`).
-4. Confirm vault fund `status: CAPTURED` and milestone `FUNDED`.
-5. Link GitHub: `POST .../milestones/:id/github` with `githubRepoFullName` + optional PR.
-6. Simulate merge (or fire a real webhook): `POST /api/admin/demo/milestones/:id/simulate-merge` with `X-Demo-Admin-Key`.
-7. Confirm audit `PASS`, milestone `PAID` + `paypal_payout_batch_id` / `github_merge_sha` set. If the milestone was created with `requiresManualSignoff: true`, the pass stops at `PASSED` until the client calls `POST .../signoff`.
-8. Judges see the structured audit on the simulate-merge / webhook JSON (`audit.reason`, `audit.checks[]`) and on `milestone.auditReport` (PASS/FAIL text with ✓/✗ evidence).
-
-## Tests
-
-```bash
-npm test
-```
+The public demo is the PayPal sandbox deployment. Locally, the app returns simulated ids when `PAYPAL_MOCK` is on, and also when that flag is unset and the client id or secret is still a placeholder.
