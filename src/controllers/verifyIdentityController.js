@@ -78,85 +78,26 @@ async function startVerifyIdentity(req, res, next) {
 
 /**
  * GET /api/auth/verify-identity/callback/digilocker
- * DigiLocker OAuth callback scaffold — sets gov_id_verified + kyc_provider.
+ * Refused. The demo sandbox is the only path that sets the ID flag.
  */
-async function digilockerCallback(req, res, next) {
-  try {
-    const { code, state, error, error_description: errorDescription } = req.query;
-
-    if (error) {
-      return res.status(400).json({
-        error: 'digilocker_oauth_error',
-        message: errorDescription || String(error),
-      });
-    }
-
-    const result = await digilocker.exchangeCodeAndVerify({
-      code: code ? String(code) : '',
-      state: state ? String(state) : '',
-    });
-
-    if (!result.verified) {
-      return res.status(400).json({ error: 'verification_failed', provider: digilocker.PROVIDER });
-    }
-
-    const user = await prisma.user.update({
-      where: { id: result.userId },
-      data: {
-        govIdVerified: true,
-        kycProvider: digilocker.PROVIDER,
-      },
-    });
-
-    return res.status(200).json({
-      ok: true,
-      provider: digilocker.PROVIDER,
-      gov_id_verified: user.govIdVerified,
-      kyc_provider: user.kycProvider,
-      scaffold: result.scaffold === true,
-    });
-  } catch (err) {
-    return next(err);
-  }
+async function digilockerCallback(_req, res) {
+  return res.status(400).json({
+    error: 'sandbox_required',
+    message:
+      'This callback does not verify an ID. Use the DigiLocker-style sandbox on the Verify step.',
+  });
 }
 
 /**
  * GET /api/auth/verify-identity/callback/stripe
- * Stripe Identity (or regional) return URL scaffold — sets gov_id_verified + kyc_provider.
+ * Refused. Stripe Identity is roadmap and does not set the ID flag.
  */
-async function stripeIdentityCallback(req, res, next) {
-  try {
-    const sessionId = String(req.query.session_id || req.query.sessionId || '');
-    const userId = String(req.query.user_id || req.query.userId || req.header('x-user-id') || '');
-
-    const result = await stripeIdentity.completeVerification({ sessionId, userId });
-
-    if (!result.verified) {
-      return res.status(400).json({
-        error: 'verification_failed',
-        provider: stripeIdentity.PROVIDER,
-      });
-    }
-
-    const user = await prisma.user.update({
-      where: { id: result.userId },
-      data: {
-        govIdVerified: true,
-        kycProvider: stripeIdentity.PROVIDER,
-      },
-    });
-
-    return res.status(200).json({
-      ok: true,
-      provider: stripeIdentity.PROVIDER,
-      gov_id_verified: user.govIdVerified,
-      kyc_provider: user.kycProvider,
-      session_id: result.sessionId,
-      scaffold: result.scaffold === true,
-    });
-  } catch (err) {
-    return next(err);
-  }
+async function stripeIdentityCallback(_req, res) {
+  return res.status(400).json({
+    error: 'sandbox_required',
+    message:
+      'Stripe Identity is not connected. Use the DigiLocker-style sandbox on the Verify step.',
+  });
 }
 
 module.exports = {

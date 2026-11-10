@@ -31,6 +31,8 @@ const state = {
   chatMessages: [],
   chatPollTimer: null,
   counselorStatus: 'OPEN',
+  kycHint: null,
+  kycLocal: null,
 };
 
 function $(sel, root = document) {
@@ -91,7 +93,10 @@ function go(step) {
   $all('.step-rail button').forEach((b) => b.classList.toggle('active', b.dataset.go === step));
   history.replaceState(null, '', `#${step}`);
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (step === 'verify') refreshVerifyUi();
+  if (step === 'verify') {
+    refreshVerifyUi();
+    loadKycHint();
+  }
   if (step === 'paid') refreshPaid();
   if (step === 'fund') refreshDepositPanel();
   if (step === 'project') {
@@ -257,11 +262,260 @@ function refreshVerifyUi() {
   const consent = $('#verify-status [data-flag="consent"] strong');
   const kycOn = Boolean(state.user?.govIdVerified);
   const consentOn = Boolean(state.user?.monitoringConsentGranted);
-  kyc.textContent = kycOn ? `yes (${state.user.kycProvider || 'verified'})` : 'no';
+  const method = String(state.user?.kycMethod || state.user?.kycProvider || 'verified').replaceAll('_', ' ');
+  kyc.textContent = kycOn ? `yes (${method})` : 'no';
   consent.textContent = consentOn ? 'yes' : 'no';
   $('#verify-status [data-flag="kyc"]').classList.toggle('on', kycOn);
   $('#verify-status [data-flag="consent"]').classList.toggle('on', consentOn);
   $('#btn-verify-next').disabled = !(kycOn && consentOn);
+  const nameEl = $('#consent-name');
+  if (nameEl && !nameEl.value && state.user?.name) nameEl.value = state.user.name;
+  renderKyc();
+}
+
+function kycLocal() {
+  if (!state.kycLocal || state.kycLocal.userId !== state.userId) {
+    state.kycLocal = { userId: state.userId, emailIssued: false, phoneIssued: false };
+  }
+  return state.kycLocal;
+}
+
+function showKycError(target, err) {
+  const el = $(target);
+  const msg = err?.data?.message || err?.message || 'Something went wrong';
+  if (el) {
+    el.hidden = false;
+    el.textContent = msg;
+  }
+  showLog('#log-verify', err?.data || msg);
+}
+
+function clearKycError(target) {
+  const el = $(target);
+  if (!el) return;
+  el.hidden = true;
+  el.textContent = '';
+}
+
+function formatDob(iso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!match) return iso || '—';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${Number(match[3])} ${months[Number(match[2]) - 1] || ''} ${match[1]}`.trim();
+}
+
+function renderDocList(list, docs) {
+  if (!list) return;
+  if (!docs) {
+    list.innerHTML = '';
+    return;
+  }
+  const rows = [
+    ['ID', docs.maskedId],
+    ['Name', docs.name],
+    ['Date of birth', formatDob(docs.dob)],
+    ['Address proof', docs.addressProof || docs.address],
+  ];
+  list.innerHTML = rows
+    .map(
+      ([label, value]) =>
+        `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || '—')}</dd>`
+    )
+    .join('');
+}
+
+function kycDocumentsFromUser() {
+  const user = state.user;
+  if (!user?.govIdVerified || !user.kycMaskedId) return null;
+  const hint = state.kycHint?.forUserId === state.userId ? state.kycHint.demoRecord : null;
+  return {
+    maskedId: user.kycMaskedId,
+    name: hint?.name || user.name,
+    dob: hint?.dob || '',
+    addressProof: hint?.addressProof || hint?.address || '',
+  };
+}
+
+function renderKyc() {
+  const stepper = $('#kyc-stepper');
+  if (!stepper) return;
+  const user = state.user;
+  const local = kycLocal();
+  const steps = user?.kycSandbox || {};
+  const emailVerified = Boolean(user?.govIdVerified || steps.emailVerified);
+  const phoneVerified = Boolean(user?.govIdVerified || steps.phoneVerified);
+  const hint = state.kycHint?.forUserId === state.userId ? state.kycHint : null;
+
+  const email = $('#kyc-email');
+  if (email) email.value = user?.email || '';
+  const phone = $('#kyc-phone');
+  if (phone && phone.dataset.forUser !== state.userId) {
+    phone.value = '';
+    phone.dataset.forUser = state.userId;
+    phone.dataset.autofilled = '0';
+  }
+  if (phone && hint?.phoneHint && phone.dataset.autofilled !== 'user') {
+    phone.value = hint.phoneHint;
+    phone.dataset.autofilled = '1';
+  }
+  if (phone) phone.disabled = !user || emailVerified === false;
+  const phoneStart = $('#btn-kyc-phone-start');
+  if (phoneStart) phoneStart.disabled = !emailVerified || Boolean(user?.govIdVerified);
+  const emailStart = $('#btn-kyc-email-start');
+  if (emailStart) emailStart.disabled = !user || Boolean(user?.govIdVerified);
+  const locker = $('#btn-kyc-locker');
+  if (locker) locker.disabled = !phoneVerified || Boolean(user?.govIdVerified);
+
+  const emailStep = $('[data-kyc-step="email"]');
+  const phoneStep = $('[data-kyc-step="phone"]');
+  const idStep = $('[data-kyc-step="id"]');
+  emailStep?.classList.toggle('is-done', emailVerified);
+  emailStep?.classList.toggle('is-locked', !user);
+  phoneStep?.classList.toggle('is-done', phoneVerified);
+  phoneStep?.classList.toggle('is-locked', !emailVerified);
+  idStep?.classList.toggle('is-done', Boolean(user?.govIdVerified));
+  idStep?.classList.toggle('is-locked', !phoneVerified);
+
+  const emailConfirm = $('#kyc-email-confirm');
+  const phoneConfirm = $('#kyc-phone-confirm');
+  const emailDone = $('[data-kyc-done="email"]');
+  const phoneDone = $('[data-kyc-done="phone"]');
+  if (emailConfirm) emailConfirm.hidden = emailVerified || !local.emailIssued;
+  if (emailDone) emailDone.hidden = !emailVerified;
+  if (phoneConfirm) phoneConfirm.hidden = phoneVerified || !local.phoneIssued;
+  if (phoneDone) {
+    phoneDone.hidden = !phoneVerified;
+    if (phoneVerified && (steps.phoneLast4 || user?.kycPhoneLast4)) {
+      phoneDone.textContent = `Phone confirmed · ending ${steps.phoneLast4 || user.kycPhoneLast4}`;
+    }
+  }
+  if (emailStart) emailStart.hidden = emailVerified;
+  if (phoneStart) phoneStart.hidden = phoneVerified;
+
+  const lockerHint = $('#kyc-locker-hint');
+  if (lockerHint && hint?.sandboxDemoId) {
+    lockerHint.textContent = `${hint.sandboxDemoIdLabel}: ${hint.sandboxDemoId}`;
+  }
+  const stripeTip = $('#stripe-roadmap-tip');
+  if (stripeTip && hint?.stripeTooltip) stripeTip.textContent = hint.stripeTooltip;
+
+  const result = $('#kyc-result');
+  const docs = kycDocumentsFromUser();
+  if (result) result.hidden = !docs;
+  if (docs) renderDocList($('#kyc-result-list'), docs);
+}
+
+async function loadKycHint() {
+  if (!state.userId) return null;
+  if (state.kycHint?.forUserId === state.userId) {
+    renderKyc();
+    return state.kycHint;
+  }
+  try {
+    const data = await api('/api/auth/kyc/sandbox');
+    state.kycHint = { forUserId: state.userId, ...data };
+    renderKyc();
+    return data;
+  } catch (err) {
+    showKycError('#kyc-error', err);
+    return null;
+  }
+}
+
+async function startKycEmail() {
+  clearKycError('#kyc-error');
+  if (!state.user?.email) throw new Error('Pick a user first');
+  const data = await api('/api/auth/kyc/sandbox/email/start', {
+    method: 'POST',
+    body: { email: state.user.email },
+  });
+  kycLocal().emailIssued = true;
+  showLog('#log-verify', data);
+  await refreshMe();
+}
+
+async function confirmKycEmail() {
+  clearKycError('#kyc-error');
+  const data = await api('/api/auth/kyc/sandbox/email/confirm', {
+    method: 'POST',
+    body: { otp: $('#kyc-email-otp')?.value || '' },
+  });
+  showLog('#log-verify', data);
+  await refreshMe();
+}
+
+async function startKycPhone() {
+  clearKycError('#kyc-error');
+  const data = await api('/api/auth/kyc/sandbox/phone/start', {
+    method: 'POST',
+    body: { phone: $('#kyc-phone')?.value || '' },
+  });
+  kycLocal().phoneIssued = true;
+  showLog('#log-verify', data);
+  await refreshMe();
+}
+
+async function confirmKycPhone() {
+  clearKycError('#kyc-error');
+  const data = await api('/api/auth/kyc/sandbox/phone/confirm', {
+    method: 'POST',
+    body: { otp: $('#kyc-phone-otp')?.value || '' },
+  });
+  showLog('#log-verify', data);
+  await refreshMe();
+}
+
+function openKycLocker() {
+  clearKycError('#kyc-error');
+  clearKycError('#kyc-locker-error');
+  clearKycError('#kyc-locker-otp-error');
+  const consent = $('#kyc-locker-consent');
+  const otp = $('#kyc-locker-otp');
+  const docs = $('#kyc-locker-docs');
+  if (consent) consent.hidden = false;
+  if (otp) otp.hidden = true;
+  if (docs) docs.hidden = true;
+  const dialog = $('#kyc-locker-dialog');
+  if (dialog && !dialog.open) dialog.showModal();
+  $('#kyc-locker-id')?.focus();
+}
+
+async function continueKycLocker() {
+  clearKycError('#kyc-locker-error');
+  const idNumber = $('#kyc-locker-id')?.value || '';
+  const data = await api('/api/auth/kyc/sandbox/digilocker/start', {
+    method: 'POST',
+    body: { idNumber },
+  });
+  showLog('#log-verify', data);
+  const hint = $('#kyc-locker-otp-hint');
+  if (hint) hint.textContent = data.hint || 'Sandbox OTP: 123456';
+  $('#kyc-locker-consent').hidden = true;
+  $('#kyc-locker-otp').hidden = false;
+  $('#kyc-locker-otp-input')?.focus();
+}
+
+async function fetchKycDocuments() {
+  clearKycError('#kyc-locker-otp-error');
+  const data = await api('/api/auth/kyc/sandbox/digilocker/confirm', {
+    method: 'POST',
+    body: { otp: $('#kyc-locker-otp-input')?.value || '' },
+  });
+  showLog('#log-verify', data);
+  renderDocList($('#kyc-locker-doc-list'), data.documents);
+  $('#kyc-locker-otp').hidden = true;
+  $('#kyc-locker-docs').hidden = false;
+  await refreshMe();
+}
+
+async function quickVerifyKyc() {
+  clearKycError('#kyc-error');
+  if (!state.userId) throw new Error('Pick a user first');
+  const data = await api('/api/auth/kyc/sandbox/quick', { method: 'POST', body: {} });
+  showLog('#log-verify', data);
+  await refreshMe();
+  const box = $('#consent-box');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function seedUsers() {
@@ -278,33 +532,6 @@ async function seedUsers() {
     if (key) selectPersona(key);
   }
   $('#btn-users-next').disabled = !state.userId;
-}
-
-async function verifyIdentity() {
-  if (!state.userId) throw new Error('Pick a user first');
-  const country = state.user?.countryCode || 'US';
-  const start = await api('/api/auth/verify-identity', {
-    method: 'POST',
-    body: { countryCode: country },
-  });
-
-  let result;
-  if (start.provider === 'digilocker' && start.authorizeUrl) {
-    const url = new URL(start.authorizeUrl);
-    const oauthState = url.searchParams.get('state');
-    result = await api(
-      `/api/auth/verify-identity/callback/digilocker?code=demo-scaffold&state=${encodeURIComponent(oauthState || '')}`,
-      { auth: false }
-    );
-  } else if (start.verificationUrl) {
-    const url = new URL(start.verificationUrl, window.location.origin);
-    result = await api(`${url.pathname}${url.search}`, { auth: false });
-  } else {
-    throw new Error('Unexpected verify-identity response');
-  }
-
-  showLog('#log-verify', { start, result });
-  await refreshMe();
 }
 
 async function loadConsentAgreement() {
@@ -545,21 +772,7 @@ async function ensureActorReady(userId) {
   state.userId = userId;
   let user = (await api('/api/auth/me')).user;
   if (!user.govIdVerified) {
-    const country = user.countryCode || 'US';
-    const start = await api('/api/auth/verify-identity', {
-      method: 'POST',
-      body: { countryCode: country },
-    });
-    if (start.provider === 'digilocker' && start.authorizeUrl) {
-      const url = new URL(start.authorizeUrl);
-      await api(
-        `/api/auth/verify-identity/callback/digilocker?code=demo-scaffold&state=${encodeURIComponent(url.searchParams.get('state') || '')}`,
-        { auth: false }
-      );
-    } else if (start.verificationUrl) {
-      const url = new URL(start.verificationUrl, window.location.origin);
-      await api(`${url.pathname}${url.search}`, { auth: false });
-    }
+    await api('/api/auth/kyc/sandbox/quick', { method: 'POST', body: {} });
     user = (await api('/api/auth/me')).user;
   }
   if (!user.monitoringConsentGranted) {
@@ -576,6 +789,8 @@ async function ensureActorReady(userId) {
   }
   state.user = user;
   state.userId = user.id;
+  const match = Object.entries(state.users).find(([, row]) => row.id === user.id);
+  if (match) state.users[match[0]] = { ...state.users[match[0]], ...user };
   persist();
   updateSessionChip();
   if (typeof renderDepositPanel === 'function') renderDepositPanel();
@@ -1296,12 +1511,68 @@ function bindUi() {
 
   $('#btn-switch-user').addEventListener('click', () => go('users'));
 
-  $('#btn-verify-id').addEventListener('click', async () => {
+  $('#kyc-phone')?.addEventListener('input', (event) => {
+    event.target.dataset.autofilled = 'user';
+  });
+
+  $('#btn-kyc-email-start')?.addEventListener('click', async () => {
     try {
-      await verifyIdentity();
+      await startKycEmail();
     } catch (err) {
-      showLog('#log-verify', err.data || err.message);
+      showKycError('#kyc-error', err);
     }
+  });
+  $('#btn-kyc-email-confirm')?.addEventListener('click', async () => {
+    try {
+      await confirmKycEmail();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-phone-start')?.addEventListener('click', async () => {
+    try {
+      await startKycPhone();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-phone-confirm')?.addEventListener('click', async () => {
+    try {
+      await confirmKycPhone();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#btn-kyc-locker')?.addEventListener('click', () => openKycLocker());
+  $('#btn-kyc-quick')?.addEventListener('click', async () => {
+    try {
+      await quickVerifyKyc();
+    } catch (err) {
+      showKycError('#kyc-error', err);
+    }
+  });
+  $('#kyc-locker-cancel')?.addEventListener('click', () => $('#kyc-locker-dialog')?.close());
+  $('#kyc-locker-back')?.addEventListener('click', () => {
+    $('#kyc-locker-otp').hidden = true;
+    $('#kyc-locker-consent').hidden = false;
+  });
+  $('#kyc-locker-continue')?.addEventListener('click', async () => {
+    try {
+      await continueKycLocker();
+    } catch (err) {
+      showKycError('#kyc-locker-error', err);
+    }
+  });
+  $('#kyc-locker-fetch')?.addEventListener('click', async () => {
+    try {
+      await fetchKycDocuments();
+    } catch (err) {
+      showKycError('#kyc-locker-otp-error', err);
+    }
+  });
+  $('#kyc-locker-done')?.addEventListener('click', () => {
+    $('#kyc-locker-dialog')?.close();
+    $('#consent-box')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 
   $('#btn-consent').addEventListener('click', async () => {

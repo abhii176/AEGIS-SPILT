@@ -7,6 +7,16 @@ const {
   digilockerCallback,
   stripeIdentityCallback,
 } = require('../controllers/verifyIdentityController');
+const {
+  getSandboxHint,
+  emailStart,
+  emailConfirm,
+  phoneStart,
+  phoneConfirm,
+  digilockerStart,
+  digilockerConfirm,
+  quickVerify,
+} = require('../controllers/kycSandboxController');
 
 const router = express.Router();
 
@@ -22,6 +32,19 @@ router.get('/me', requireAuth, (req, res) => {
  * Dynamically routes DigiLocker (IN) vs Stripe Identity / regional (intl).
  */
 router.post('/verify-identity', requireAuth, startVerifyIdentity);
+
+/**
+ * DigiLocker-style sandbox (demo). Validates each step, then sets gov ID.
+ * Stores a mask and last 4 only. Does not send email, SMS, or call a government API.
+ */
+router.get('/kyc/sandbox', requireAuth, getSandboxHint);
+router.post('/kyc/sandbox/email/start', requireAuth, emailStart);
+router.post('/kyc/sandbox/email/confirm', requireAuth, emailConfirm);
+router.post('/kyc/sandbox/phone/start', requireAuth, phoneStart);
+router.post('/kyc/sandbox/phone/confirm', requireAuth, phoneConfirm);
+router.post('/kyc/sandbox/digilocker/start', requireAuth, digilockerStart);
+router.post('/kyc/sandbox/digilocker/confirm', requireAuth, digilockerConfirm);
+router.post('/kyc/sandbox/quick', requireAuth, quickVerify);
 
 /** OAuth / hosted-verification callbacks (no auth header — state/session carries user id) */
 router.get('/verify-identity/callback/digilocker', digilockerCallback);
