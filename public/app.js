@@ -1087,11 +1087,10 @@ function renderCounselorCase(row) {
   const audits = evidence.audits || [];
   const diffs = evidence.diffs || [];
   const consent = evidence.consent || {};
-  const recordings = evidence.callRecordings || {
-    label: 'Evidence: call recordings — coming soon',
-    roadmap: true,
-    note: 'Roadmap only. This demo does not record calls and does not invent recordings.',
-  };
+  const recordings = evidence.callRecordings || {};
+  const recordingCard = globalThis.AegisCallRecording
+    ? globalThis.AegisCallRecording.render(recordings)
+    : '';
   const decided = row.status === 'RESOLVED';
   const consentLine = (party, label) => {
     if (!party) return `<p>${label}: no consent log</p>`;
@@ -1102,6 +1101,7 @@ function renderCounselorCase(row) {
   return `<article class="counselor-case" data-dispute-id="${escapeHtml(row.id)}">
     <h3>${escapeHtml(evidence.project?.title || row.projectTitle || 'Project')} · ${escapeHtml(row.status)}</h3>
     <p>${escapeHtml(row.raisedByName || 'A party')} raised this. ${escapeHtml(row.reason || '')}</p>
+    ${recordingCard}
     <div class="evidence-grid">
       <section class="evidence-card">
         <h4>Milestone and criteria</h4>
@@ -1143,10 +1143,6 @@ function renderCounselorCase(row) {
         <h4>Consent</h4>
         ${consentLine(consent.client, 'Client')}
         ${consentLine(consent.freelancer, 'Freelancer')}
-      </section>
-      <section class="evidence-card roadmap">
-        <h4>${escapeHtml(recordings.label || 'Evidence: call recordings — coming soon')} <span class="roadmap-tag">Roadmap</span></h4>
-        <p>${escapeHtml(recordings.note || 'Roadmap only. Calls are not recorded in this demo.')}</p>
       </section>
     </div>
     <section class="evidence-card">

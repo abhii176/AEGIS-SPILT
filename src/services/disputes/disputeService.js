@@ -17,6 +17,7 @@ const {
   describeDisputeLines,
   decisionTransition,
 } = require('../../lib/disputeMath');
+const { sampleCallRecording } = require('../../lib/callRecordingPreview');
 
 const OPEN_MILESTONE_FILTER = { notIn: ['PAID', 'RELEASED', 'CANCELLED'] };
 
@@ -349,12 +350,7 @@ function createDisputeService({
         client: latestConsent(consents, project.clientId),
         freelancer: latestConsent(consents, project.freelancerId),
       },
-      callRecordings: {
-        available: false,
-        roadmap: true,
-        label: 'Evidence: call recordings — coming soon',
-        note: 'Roadmap only. This demo does not record calls and does not invent recordings.',
-      },
+      callRecordings: sampleCallRecording(),
     };
   }
 

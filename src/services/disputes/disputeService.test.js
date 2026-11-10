@@ -346,9 +346,13 @@ async function testEvidenceContents() {
   assert.strictEqual(evidence.diffs[0].diffPreview.includes('login form'), true);
   assert.strictEqual(evidence.consent.client.consentVersion, '2.0.0');
   assert.strictEqual(evidence.consent.freelancer.consentVersion, '2.0.0');
-  assert.strictEqual(evidence.callRecordings.available, false);
-  assert.strictEqual(evidence.callRecordings.roadmap, true);
-  assert.ok(evidence.callRecordings.label.includes('coming soon'));
+  assert.strictEqual(evidence.callRecordings.available, true);
+  assert.strictEqual(evidence.callRecordings.preview, true);
+  assert.strictEqual(evidence.callRecordings.sample, true);
+  assert.strictEqual(evidence.callRecordings.liveCapture, false);
+  assert.strictEqual(evidence.callRecordings.label, 'Call recording (preview - sample)');
+  assert.ok(evidence.callRecordings.note.includes('Agora'));
+  assert.ok(evidence.callRecordings.lines.filter((line) => line.flagged).length >= 2);
   assert.strictEqual(evidence.callRecordings.recordings, undefined);
 }
 
