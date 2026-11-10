@@ -316,6 +316,35 @@ async function testMergeHandlerManualSignoffHoldsPayout() {
   assert.strictEqual(db._state.milestone.auditPassed, true);
 }
 
+async function testMergeHandlerPausesPayoutWhenDisputed() {
+  const db = makeMockDb({ project: { status: 'DISPUTED' } });
+  const releases = [];
+  const handler = createMergeHandler({
+    db,
+    escrow: {
+      releaseMilestone: async () => {
+        releases.push('paid');
+        throw new Error('should not auto-pay while disputed');
+      },
+    },
+  });
+
+  const result = await handler.handleMergedPullRequest({
+    repoFullName: 'acme/landing',
+    prNumber: 7,
+    mergeSha: 'disp1',
+    diff: '+ Ship hero CTA lighthouse feature',
+    source: 'webhook',
+  });
+
+  assert.strictEqual(result.audit.passed, true);
+  assert.strictEqual(result.payoutPaused, true);
+  assert.strictEqual(result.disputeOpen, true);
+  assert.strictEqual(result.payout, null);
+  assert.strictEqual(result.milestone.status, 'PASSED');
+  assert.strictEqual(releases.length, 0);
+}
+
 async function run() {
   testSignatureRoundTrip();
   testSignatureRejectsWrongLength();
@@ -326,6 +355,7 @@ async function run() {
   await testMergeHandlerMissingMilestone();
   await testMergeHandlerRejectsUnfunded();
   await testMergeHandlerManualSignoffHoldsPayout();
+  await testMergeHandlerPausesPayoutWhenDisputed();
   console.log('github webhook + merge handler tests passed');
 }
 

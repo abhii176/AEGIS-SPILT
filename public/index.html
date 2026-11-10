@@ -68,7 +68,8 @@
           <p class="hero-sub">
             A merged GitHub pull request is checked against the milestone’s acceptance criteria.
             Objective work is paid in full through PayPal when that check passes. Subjective work
-            can wait for the client to sign off. Platform fee: 0%.
+            can wait for the client to sign off. If they disagree, either person can raise a dispute
+            and a counselor decides from the chat, the audit, and the diff. Platform fee: 0%.
           </p>
           <ul class="trust-row">
             <li>
@@ -97,7 +98,7 @@
           <p class="step-kicker">Step 1</p>
           <h2>Pick who you are</h2>
           <p class="step-lead">
-            Seed Sarah (client) and Rohan (freelancer). The demo signs you in with a stand-in header, not a real account.
+            Seed Sarah (client), Rohan (freelancer), and Maya (counselor). The demo signs you in with a stand-in header, not a real account.
           </p>
           <div class="persona-row" id="persona-row">
             <button type="button" class="persona" data-persona="sarah" disabled>
@@ -110,9 +111,14 @@
               <span class="persona-name">Rohan Mehta</span>
               <span class="persona-meta">Ships + gets paid</span>
             </button>
+            <button type="button" class="persona" data-persona="maya" disabled>
+              <span class="persona-role">Counselor</span>
+              <span class="persona-name">Maya Rao</span>
+              <span class="persona-meta">Decides disputes</span>
+            </button>
           </div>
           <div class="action-row">
-            <button type="button" class="btn primary" id="btn-seed-users">Seed Sarah &amp; Rohan</button>
+            <button type="button" class="btn primary" id="btn-seed-users">Seed Sarah, Rohan &amp; Maya</button>
             <button type="button" class="btn ghost" data-go="verify" id="btn-users-next" disabled>Continue</button>
           </div>
           <pre class="log" id="log-users" hidden></pre>
@@ -242,6 +248,19 @@
             </form>
             <p class="chat-hint" id="chat-hint" hidden></p>
           </div>
+          <form class="dispute-form" data-dispute-form>
+            <h3>Raise dispute</h3>
+            <p class="field-hint">Either Sarah or Rohan can open this after a milestone is funded. Payout and exit pause until Maya decides.</p>
+            <label>
+              Reason
+              <textarea name="reason" rows="2" required minlength="3" placeholder="What should the counselor look at?"></textarea>
+            </label>
+            <div class="action-row">
+              <button type="submit" class="btn secondary">Raise dispute</button>
+              <button type="button" class="btn ghost" data-go="counselor">Open counselor</button>
+            </div>
+          </form>
+          <div class="dispute-outcome" data-dispute-outcome hidden></div>
           <pre class="log" id="log-project" hidden></pre>
         </div>
       </section>
@@ -285,7 +304,20 @@
           <p class="step-lead">
             Preview where the money goes, then confirm. A one-sided client cancel uses the 50% early-exit penalty.
             Mutual cancel has no penalty. If Rohan walks away, his deposit goes to Sarah.
+            An open dispute pauses every exit until the counselor decides.
           </p>
+          <form class="dispute-form" data-dispute-form>
+            <h3>Raise dispute</h3>
+            <label>
+              Reason
+              <textarea name="reason" rows="2" required minlength="3" placeholder="Why should a counselor decide?"></textarea>
+            </label>
+            <div class="action-row">
+              <button type="submit" class="btn secondary">Raise dispute</button>
+              <button type="button" class="btn ghost" data-go="counselor">Open counselor</button>
+            </div>
+          </form>
+          <div class="dispute-outcome" data-dispute-outcome hidden></div>
           <div class="exit-actions">
             <button type="button" class="btn secondary" id="btn-exit-preview-mutual" data-path="MUTUAL">Preview mutual cancel</button>
             <button type="button" class="btn secondary" id="btn-exit-preview-client" data-path="CLIENT_ONESIDED">Preview client cancel</button>
@@ -385,6 +417,26 @@
             <button type="button" class="btn ghost" data-go="landing">Back to start</button>
           </div>
           <pre class="log" id="log-paid" hidden></pre>
+        </div>
+      </section>
+
+      <!-- COUNSELOR -->
+      <section class="panel" id="panel-counselor" data-step="counselor">
+        <div class="step-frame">
+          <p class="step-kicker">Counselor (demo)</p>
+          <h2>Counselor (demo)</h2>
+          <p class="step-lead">
+            Maya Rao reviews open disputes. The demo admin key works too. Each decision needs a short note,
+            then the vault and the deposit move through the same PayPal payout and refund path as an exit.
+          </p>
+          <div class="action-row">
+            <button type="button" class="btn secondary" id="btn-counselor-refresh">Refresh disputes</button>
+            <button type="button" class="btn ghost" id="btn-counselor-resolved">Show decided</button>
+          </div>
+          <div id="counselor-list" class="counselor-list">
+            <p class="field-hint">Open this tab after someone raises a dispute.</p>
+          </div>
+          <pre class="log" id="log-counselor" hidden></pre>
         </div>
       </section>
     </main>

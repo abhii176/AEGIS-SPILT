@@ -20,6 +20,15 @@ const DEMO_PERSONAS = [
     locale: 'en',
     paypalEmail: 'rohan-sandbox@example.com',
   },
+  {
+    key: 'maya',
+    email: 'maya.counselor@aegis-split.demo',
+    name: 'Maya Rao',
+    role: 'COUNSELOR',
+    countryCode: 'US',
+    locale: 'en',
+    paypalEmail: 'maya-sandbox@example.com',
+  },
 ];
 
 function publicUser(user) {
@@ -85,7 +94,7 @@ async function seedDemoUsers(req, res, next) {
     return res.status(200).json({
       ok: true,
       users,
-      note: 'Sarah (CLIENT) and Rohan (FREELANCER) ready. Use their id as X-User-Id.',
+      note: 'Sarah (CLIENT), Rohan (FREELANCER), and Maya (COUNSELOR) ready. Use their id as X-User-Id. Maya, or the demo admin key, can open disputes.',
     });
   } catch (err) {
     return next(err);

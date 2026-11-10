@@ -2,7 +2,7 @@ const { prisma } = require('../../lib/prisma');
 const { env } = require('../../config/env');
 const { createPaypalService } = require('./index');
 const { createNotificationService } = require('../notifications');
-const { assertProjectNotCancelled } = require('../../lib/projectStatus');
+const { assertProjectNotCancelled, assertPayoutAllowed } = require('../../lib/projectStatus');
 const { releaseBlockedAwaitingClientSignoff } = require('../../lib/clientSignoff');
 
 const RELEASABLE_STATUSES = new Set(['FUNDED', 'IN_PROGRESS', 'SUBMITTED', 'AUDITING', 'PASSED']);
@@ -198,6 +198,7 @@ function createEscrowService({
       throw err;
     }
     assertProjectNotCancelled(project, 'funding the vault');
+    assertPayoutAllowed(project, 'funding the vault');
 
     const resolved = await resolveFundAmount({ project, milestoneId, amountCents });
     const payCurrency = String(currency || resolved.currency || 'USD').toUpperCase();
@@ -462,6 +463,7 @@ function createEscrowService({
     }
 
     assertProjectNotCancelled(milestone.project, 'releasing milestone payout');
+    assertPayoutAllowed(milestone.project, 'auto-payout');
 
     if (['RELEASED', 'PAID'].includes(milestone.status)) {
       const err = new Error('Milestone already released/paid');

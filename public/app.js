@@ -8,6 +8,7 @@ const STEPS = [
   { id: 'audit', label: 'Audit' },
   { id: 'paid', label: 'Paid' },
   { id: 'exit', label: 'Exit' },
+  { id: 'counselor', label: 'Counselor' },
 ];
 
 const state = {
@@ -29,6 +30,7 @@ const state = {
   seenNotifIds: new Set(JSON.parse(localStorage.getItem('aegis.seenNotifs') || '[]')),
   chatMessages: [],
   chatPollTimer: null,
+  counselorStatus: 'OPEN',
 };
 
 function $(sel, root = document) {
@@ -98,6 +100,8 @@ function go(step) {
   } else {
     stopChatPolling();
   }
+  if (step === 'project' || step === 'exit' || step === 'paid') refreshDisputeOutcome();
+  if (step === 'counselor') refreshCounselor();
 }
 
 function renderRail() {
@@ -578,6 +582,10 @@ async function ensureActorReady(userId) {
   return user;
 }
 
+function usd(cents) {
+  return `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+}
+
 function formatExitLines(lines = []) {
   return lines
     .map((l) => {
@@ -921,7 +929,8 @@ function renderAudit(data) {
   const engine = data.audit?.engine || data.audit?.provider || '';
   const verdict = $('#audit-verdict');
   let label = passed ? 'PASS — criteria met' : 'FAIL — criteria not met';
-  if (waiting) label = 'PASS — waiting for client sign-off';
+  if (data.disputeOpen || data.payoutPaused) label = 'PASS — payout paused (dispute open)';
+  else if (waiting) label = 'PASS — waiting for client sign-off';
   if (engine) label += ` (${engine})`;
   verdict.textContent = label;
   verdict.className = `audit-verdict ${passed ? 'pass' : 'fail'}`;
@@ -1007,6 +1016,259 @@ function renderPaid(milestone) {
         `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd></div>`
     )
     .join('');
+}
+
+async function raiseDispute(form) {
+  if (!state.projectId) throw new Error('Create and fund a project first');
+  const reason = String(new FormData(form).get('reason') || '').trim();
+  if (reason.length < 3) throw new Error('Write a short reason');
+  const data = await api(`/api/projects/${state.projectId}/disputes`, {
+    method: 'POST',
+    body: {
+      reason,
+      milestoneId: state.milestoneId || undefined,
+    },
+  });
+  await refreshDisputeOutcome();
+  await refreshNotifications({ toastNew: true });
+  return data;
+}
+
+function renderDisputeOutcome(payload) {
+  const boxes = $all('[data-dispute-outcome]');
+  const dispute = payload?.dispute;
+  if (!dispute) {
+    boxes.forEach((box) => {
+      box.hidden = true;
+      box.innerHTML = '';
+    });
+    return;
+  }
+  const money =
+    dispute.status === 'RESOLVED'
+      ? `<p>Freelancer ${usd(dispute.freelancerAmountCents)} · Client refund ${usd(dispute.clientRefundCents)} · Deposit ${escapeHtml(dispute.depositDisposition || 'NONE')} ${dispute.depositCents ? usd(dispute.depositCents) : ''}</p>
+         <p>Decided by ${escapeHtml(dispute.decidedByLabel || 'counselor')} · ${escapeHtml(dispute.decision || '')}${dispute.freelancerPercent != null ? ` (${dispute.freelancerPercent}%)` : ''}</p>
+         <p>${escapeHtml(dispute.note || '')}</p>`
+      : `<p>Payout and exit are paused until the counselor decides.</p><p>${escapeHtml(dispute.reason || '')}</p>`;
+  const html = `<h3>Dispute ${escapeHtml(dispute.status)}</h3>${money}`;
+  boxes.forEach((box) => {
+    box.hidden = false;
+    box.innerHTML = html;
+  });
+}
+
+async function refreshDisputeOutcome() {
+  if (!state.projectId || !state.userId) return null;
+  try {
+    const data = await api(`/api/projects/${state.projectId}/disputes`);
+    renderDisputeOutcome(data);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function counselorMoneyLines(lines = []) {
+  if (!lines.length) return '<li>No funds to move</li>';
+  return lines
+    .map(
+      (line) =>
+        `<li><strong>${escapeHtml(usd(line.amountCents))}</strong> → ${escapeHtml(line.to)} — ${escapeHtml(line.label)}</li>`
+    )
+    .join('');
+}
+
+function renderCounselorCase(row) {
+  const evidence = row.evidence || {};
+  const vault = evidence.vault || {};
+  const deposit = evidence.deposit || {};
+  const milestones = evidence.milestones || [];
+  const messages = evidence.messages || [];
+  const audits = evidence.audits || [];
+  const diffs = evidence.diffs || [];
+  const consent = evidence.consent || {};
+  const recordings = evidence.callRecordings || {
+    label: 'Evidence: call recordings — coming soon',
+    roadmap: true,
+    note: 'Roadmap only. This demo does not record calls and does not invent recordings.',
+  };
+  const decided = row.status === 'RESOLVED';
+  const consentLine = (party, label) => {
+    if (!party) return `<p>${label}: no consent log</p>`;
+    const when = party.agreedAt ? new Date(party.agreedAt).toLocaleString() : '—';
+    return `<p>${label}: version ${escapeHtml(party.consentVersion || '—')} · ${escapeHtml(when)}</p>`;
+  };
+
+  return `<article class="counselor-case" data-dispute-id="${escapeHtml(row.id)}">
+    <h3>${escapeHtml(evidence.project?.title || row.projectTitle || 'Project')} · ${escapeHtml(row.status)}</h3>
+    <p>${escapeHtml(row.raisedByName || 'A party')} raised this. ${escapeHtml(row.reason || '')}</p>
+    <div class="evidence-grid">
+      <section class="evidence-card">
+        <h4>Milestone and criteria</h4>
+        ${milestones
+          .map(
+            (m) => `<p><strong>${escapeHtml(m.title)}</strong> · ${escapeHtml(m.status)} · ${usd(m.amountCents)}</p>
+              <p>${escapeHtml(m.acceptanceCriteria || '')}</p>`
+          )
+          .join('') || '<p>No milestones</p>'}
+      </section>
+      <section class="evidence-card">
+        <h4>Vault and deposit</h4>
+        <p>${
+          decided
+            ? `At the decision the vault held ${usd(row.remainingVaultCents)}. Freelancer received ${usd(row.freelancerAmountCents)}. Client refund ${usd(row.clientRefundCents)}.`
+            : `In the vault: ${usd(vault.remainingVaultCents)} remaining (${usd(vault.capturedVaultCents)} captured, ${usd(vault.paidOutCents)} already paid).`
+        }</p>
+        <p>Deposit: ${escapeHtml(deposit.status || '—')} · ${usd(deposit.amountCents)}</p>
+      </section>
+      <section class="evidence-card">
+        <h4>AI audit</h4>
+        ${audits
+          .map(
+            (a) => `<p><strong>${a.passed ? 'PASS' : 'FAIL'}</strong> · ${escapeHtml(a.title || '')}</p>
+              <pre class="audit-snippet">${escapeHtml(a.report || '')}</pre>`
+          )
+          .join('') || '<p>No audit yet. Simulate the merge after the dispute is open — payout stays paused.</p>'}
+      </section>
+      <section class="evidence-card">
+        <h4>Diff preview</h4>
+        ${diffs
+          .map(
+            (d) => `<p>${escapeHtml(d.repoFullName || '')} #${escapeHtml(d.prNumber || '')}</p>
+              <pre class="diff-preview">${escapeHtml(d.diffPreview || '(empty diff)')}</pre>`
+          )
+          .join('') || '<p>No stored diff yet.</p>'}
+      </section>
+      <section class="evidence-card">
+        <h4>Consent</h4>
+        ${consentLine(consent.client, 'Client')}
+        ${consentLine(consent.freelancer, 'Freelancer')}
+      </section>
+      <section class="evidence-card roadmap">
+        <h4>${escapeHtml(recordings.label || 'Evidence: call recordings — coming soon')} <span class="roadmap-tag">Roadmap</span></h4>
+        <p>${escapeHtml(recordings.note || 'Roadmap only. Calls are not recorded in this demo.')}</p>
+      </section>
+    </div>
+    <section class="evidence-card">
+      <h4>Chat</h4>
+      <ul class="counselor-chat">
+        ${messages
+          .map((msg) => {
+            const when = msg.createdAt ? new Date(msg.createdAt).toLocaleString() : '';
+            return `<li><strong>${escapeHtml(msg.senderName || msg.senderRole || 'User')}</strong> ${escapeHtml(msg.body || '')}<time>${escapeHtml(when)}</time></li>`;
+          })
+          .join('') || '<li>No messages</li>'}
+      </ul>
+    </section>
+    ${
+      decided
+        ? `<div class="dispute-outcome"><h3>${escapeHtml(row.decision || 'Decided')}</h3>
+            <p>${escapeHtml(row.decidedByLabel || '')} · Freelancer ${usd(row.freelancerAmountCents)} · Client ${usd(row.clientRefundCents)} · Deposit ${escapeHtml(row.depositDisposition || 'NONE')}</p>
+            <p>${escapeHtml(row.note || '')}</p>
+            <p class="field-hint">The milestone is closed so it cannot be paid a second time. The amounts above are what moved${
+              row.transferIds?.freelancerPayoutBatchId
+                ? `. Payout ${escapeHtml(row.transferIds.freelancerPayoutBatchId)}`
+                : ''
+            }${
+              row.transferIds?.vaultRefunds?.[0]?.refundId
+                ? `. Refund ${escapeHtml(row.transferIds.vaultRefunds[0].refundId)}`
+                : ''
+            }.</p></div>`
+        : `<form class="dispute-form" data-decide-form>
+            <fieldset>
+              <legend class="sr-only">Counselor decision</legend>
+              <label class="check-inline"><input type="radio" name="decision" value="RELEASE_TO_FREELANCER" /> Release to freelancer</label>
+              <label class="check-inline"><input type="radio" name="decision" value="REFUND_CLIENT" /> Refund client</label>
+              <label class="check-inline"><input type="radio" name="decision" value="SPLIT" checked /> Split</label>
+            </fieldset>
+            <label>
+              Freelancer share %
+              <input name="freelancerPercent" type="number" min="0" max="100" step="1" value="50" />
+            </label>
+            <label class="check-inline">
+              <input type="checkbox" name="freelancerAtFault" />
+              Freelancer at fault (forfeit deposit). Leave off to return it.
+            </label>
+            <label>
+              Note
+              <textarea name="note" rows="2" required minlength="3" placeholder="Why this split?"></textarea>
+            </label>
+            <ul data-preview-lines hidden></ul>
+            <div class="action-row">
+              <button type="button" class="btn secondary" data-preview>Preview split</button>
+              <button type="submit" class="btn primary" data-confirm disabled>Confirm decision</button>
+            </div>
+          </form>`
+    }
+  </article>`;
+}
+
+async function refreshCounselor() {
+  const list = $('#counselor-list');
+  if (!list) return;
+  try {
+    const data = await api(`/api/disputes?status=${encodeURIComponent(state.counselorStatus)}`, {
+      demo: true,
+    });
+    const rows = data.disputes || [];
+    list.innerHTML = rows.length
+      ? rows.map(renderCounselorCase).join('')
+      : `<p class="field-hint">No ${state.counselorStatus === 'ALL' ? '' : state.counselorStatus.toLowerCase() + ' '}disputes.</p>`;
+    showLog('#log-counselor', { count: rows.length, status: state.counselorStatus });
+  } catch (err) {
+    list.innerHTML = `<p class="field-hint">${escapeHtml(err.message || 'Could not load disputes')}</p>`;
+    showLog('#log-counselor', err.data || err.message);
+  }
+}
+
+function decisionBody(form) {
+  const fd = new FormData(form);
+  const decision = String(fd.get('decision') || 'SPLIT');
+  const percentRaw = String(fd.get('freelancerPercent') || '').trim();
+  return {
+    decision,
+    freelancerPercent: decision === 'SPLIT' && percentRaw !== '' ? Number(percentRaw) : undefined,
+    freelancerAtFault: fd.get('freelancerAtFault') === 'on',
+    note: String(fd.get('note') || '').trim(),
+  };
+}
+
+async function previewCounselorDecision(form) {
+  const article = form.closest('[data-dispute-id]');
+  const disputeId = article?.dataset.disputeId;
+  if (!disputeId) throw new Error('Missing dispute');
+  const body = decisionBody(form);
+  const data = await api(`/api/disputes/${disputeId}/preview`, {
+    method: 'POST',
+    demo: true,
+    body,
+  });
+  const lines = form.querySelector('[data-preview-lines]');
+  if (lines) {
+    lines.hidden = false;
+    lines.innerHTML = counselorMoneyLines(data.lines || []);
+  }
+  const confirm = form.querySelector('[data-confirm]');
+  if (confirm) confirm.disabled = false;
+  showLog('#log-counselor', data);
+  return data;
+}
+
+async function confirmCounselorDecision(form) {
+  const article = form.closest('[data-dispute-id]');
+  const disputeId = article?.dataset.disputeId;
+  const body = decisionBody(form);
+  if (!body.note || body.note.length < 3) throw new Error('Write a short note before confirming');
+  const data = await api(`/api/disputes/${disputeId}/decide`, {
+    method: 'POST',
+    demo: true,
+    body,
+  });
+  showLog('#log-counselor', data);
+  await refreshCounselor();
+  await refreshDisputeOutcome();
+  await refreshNotifications({ toastNew: true });
+  return data;
 }
 
 function bindUi() {
@@ -1198,6 +1460,70 @@ function bindUi() {
   });
 
   $('#btn-refresh-paid').addEventListener('click', () => refreshPaid());
+
+  document.body.addEventListener('submit', async (e) => {
+    const disputeForm = e.target.closest('[data-dispute-form]');
+    if (disputeForm) {
+      e.preventDefault();
+      const log = disputeForm.closest('.panel')?.querySelector('.log');
+      try {
+        const data = await raiseDispute(disputeForm);
+        if (log) {
+          log.hidden = false;
+          log.textContent = JSON.stringify(data, null, 2);
+        }
+      } catch (err) {
+        if (log) {
+          log.hidden = false;
+          log.textContent = JSON.stringify(err.data || err.message, null, 2);
+        }
+      }
+      return;
+    }
+    const decideForm = e.target.closest('[data-decide-form]');
+    if (decideForm) {
+      e.preventDefault();
+      try {
+        await confirmCounselorDecision(decideForm);
+      } catch (err) {
+        showLog('#log-counselor', err.data || err.message);
+      }
+    }
+  });
+
+  $('#counselor-list')?.addEventListener('click', async (e) => {
+    const previewBtn = e.target.closest('[data-preview]');
+    if (!previewBtn) return;
+    const form = previewBtn.closest('[data-decide-form]');
+    if (!form) return;
+    try {
+      await previewCounselorDecision(form);
+    } catch (err) {
+      showLog('#log-counselor', err.data || err.message);
+    }
+  });
+
+  $('#counselor-list')?.addEventListener('change', (e) => {
+    const form = e.target.closest('[data-decide-form]');
+    if (!form) return;
+    const confirm = form.querySelector('[data-confirm]');
+    if (confirm) confirm.disabled = true;
+    const percent = form.querySelector('[name="freelancerPercent"]');
+    const decision = form.querySelector('input[name="decision"]:checked')?.value;
+    if (percent) percent.disabled = decision !== 'SPLIT';
+  });
+
+  $('#btn-counselor-refresh')?.addEventListener('click', () => {
+    state.counselorStatus = 'OPEN';
+    refreshCounselor();
+  });
+
+  $('#btn-counselor-resolved')?.addEventListener('click', () => {
+    state.counselorStatus = state.counselorStatus === 'RESOLVED' ? 'OPEN' : 'RESOLVED';
+    const btn = $('#btn-counselor-resolved');
+    if (btn) btn.textContent = state.counselorStatus === 'RESOLVED' ? 'Show open' : 'Show decided';
+    refreshCounselor();
+  });
 
   $('#btn-notif')?.addEventListener('click', (e) => {
     e.stopPropagation();

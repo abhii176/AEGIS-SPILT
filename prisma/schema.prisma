@@ -10,6 +10,8 @@ datasource db {
 enum UserRole {
   CLIENT
   FREELANCER
+  /// Demo counselor who decides open disputes (not a contracting party)
+  COUNSELOR
 }
 
 /// Consent document kinds. MONITORING covers the full User Consent Agreement (incl. chats/calls).
@@ -89,6 +91,17 @@ enum DepositDisposition {
   FORFEITED
 }
 
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum DisputeDecision {
+  RELEASE_TO_FREELANCER
+  REFUND_CLIENT
+  SPLIT
+}
+
 model User {
   id                       String   @id @default(cuid())
   email                    String   @unique
@@ -117,6 +130,8 @@ model User {
   cancellationResponses    CancellationRequest[]   @relation("CancellationResponder")
   exitEvents               ExitEvent[]
   chatMessages             ChatMessage[]
+  disputesRaised           Dispute[]               @relation("DisputeRaisedBy")
+  disputesDecided          Dispute[]               @relation("DisputeDecidedBy")
 
   @@map("users")
 }
@@ -175,6 +190,7 @@ model Project {
   cancellationRequests CancellationRequest[]
   exitEvents           ExitEvent[]
   chatMessages         ChatMessage[]
+  disputes             Dispute[]
 
   @@index([clientId])
   @@index([freelancerId])
@@ -250,6 +266,7 @@ model Milestone {
   vaultFunds    VaultFund[]
   mergeEvents   MergeEvent[]
   notifications Notification[]
+  disputes      Dispute[]
 
   @@index([projectId])
   @@index([status])
@@ -416,4 +433,46 @@ model Notification {
   @@index([projectId])
   @@index([milestoneId])
   @@map("notifications")
+}
+
+/// Counselor case for a funded project. One row per project (idempotency key).
+model Dispute {
+  id                    String             @id @default(cuid())
+  projectId             String             @map("project_id")
+  /// Milestone the parties named, when they raised against one milestone
+  milestoneId           String?            @map("milestone_id")
+  raisedByUserId        String             @map("raised_by_user_id")
+  reason                String
+  status                DisputeStatus      @default(OPEN)
+  decision              DisputeDecision?
+  /// Share of the remaining vault paid to the freelancer (0–100). Null until decided.
+  freelancerPercent     Int?               @map("freelancer_percent")
+  /// When true, a held deposit is forfeited to the client. Otherwise it is returned.
+  freelancerAtFault     Boolean            @default(false) @map("freelancer_at_fault")
+  note                  String?            @db.Text
+  decidedByUserId       String?            @map("decided_by_user_id")
+  /// Counselor display name, or "demo-admin-key" when the demo key decided
+  decidedByLabel        String?            @map("decided_by_label")
+  decidedAt             DateTime?          @map("decided_at")
+  remainingVaultCents   Int?               @map("remaining_vault_cents")
+  freelancerAmountCents Int?               @map("freelancer_amount_cents")
+  clientRefundCents     Int?               @map("client_refund_cents")
+  depositCents          Int?               @map("deposit_cents")
+  depositDisposition    DepositDisposition? @map("deposit_disposition")
+  /// PayPal payout / refund ids. pending:true until transfers finish.
+  transferIds           Json?              @map("transfer_ids")
+  /// One dispute per project: dispute:<projectId>
+  idempotencyKey        String             @unique @map("idempotency_key")
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  raisedBy  User       @relation("DisputeRaisedBy", fields: [raisedByUserId], references: [id], onDelete: Restrict)
+  decidedBy User?      @relation("DisputeDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([status])
+  @@index([milestoneId])
+  @@map("disputes")
 }

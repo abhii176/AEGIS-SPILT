@@ -3,6 +3,7 @@ const { createEscrowService } = require('../paypal/escrow');
 const { createGithubClient } = require('./client');
 const { createNotificationService } = require('../notifications');
 const { assertProjectNotCancelled } = require('../../lib/projectStatus');
+const { isDisputeOpenStatus } = require('../../lib/disputeMath');
 const aiAuditor = require('../aiAuditor');
 
 /** Statuses that imply escrow was locked before merge audit/release */
@@ -281,11 +282,22 @@ function createMergeHandler({
 
     await emitAuditNotice(true, passed);
 
-    if (skipRelease || passed.requiresManualSignoff === true) {
+    let disputed = isDisputeOpenStatus(milestone.project?.status);
+    if (typeof db.project?.findUnique === 'function') {
+      const fresh = await db.project.findUnique({
+        where: { id: milestone.projectId },
+        select: { status: true },
+      });
+      if (fresh?.status) disputed = isDisputeOpenStatus(fresh.status);
+    }
+
+    if (skipRelease || passed.requiresManualSignoff === true || disputed) {
       return {
         alreadyReleased: false,
         alreadyFailed: false,
-        awaitingClientSignoff: passed.requiresManualSignoff === true,
+        awaitingClientSignoff: passed.requiresManualSignoff === true && !disputed,
+        payoutPaused: disputed,
+        disputeOpen: disputed,
         milestone: passed,
         audit,
         payout: null,

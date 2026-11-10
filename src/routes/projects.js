@@ -25,6 +25,7 @@ const {
 const { listMessages, postMessage } = require('../controllers/chatController');
 const { clientSignoff } = require('../controllers/signoffController');
 const { getProjectEvidence } = require('../controllers/evidenceController');
+const { raiseDispute, getProjectDispute } = require('../controllers/disputeController');
 
 const router = express.Router();
 
@@ -44,6 +45,15 @@ router.post('/:projectId/messages', requireAuth, postMessage);
 
 /** Chat, audit text, and stored diff preview for the parties (no counselor login). */
 router.get('/:projectId/evidence', requireAuth, getProjectEvidence);
+
+/** Either party can raise a dispute on a funded milestone. Pauses payout and exit. */
+router.get('/:projectId/disputes', requireAuth, getProjectDispute);
+router.post(
+  '/:projectId/disputes',
+  requireAuth,
+  requireKycAndConsent,
+  raiseDispute
+);
 
 /**
  * Milestones under a project.
