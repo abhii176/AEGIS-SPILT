@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Aegis-Split pitch</title>
+    <!-- Figtree by Erik Kennedy and Syne by Bonjour Monde, both SIL Open Font License. -->
+    <style>
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-400.ttf") format("truetype"); font-weight: 400; }
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-500.ttf") format("truetype"); font-weight: 500; }
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-600.ttf") format("truetype"); font-weight: 600; }
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-700.ttf") format("truetype"); font-weight: 700; }
+      @font-face { font-family: Syne; src: url("fonts/Syne-700.ttf") format("truetype"); font-weight: 700; }
+      @font-face { font-family: Syne; src: url("fonts/Syne-800.ttf") format("truetype"); font-weight: 800; }
+
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: #04110f; overflow: hidden; }
+      #stage {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        overflow: hidden;
+        color: #d8efe8;
+        font-family: Figtree, sans-serif;
+        background:
+          radial-gradient(980px 560px at 10% -12%, rgba(23, 163, 138, 0.34), transparent 58%),
+          radial-gradient(760px 500px at 96% 0%, rgba(232, 184, 74, 0.16), transparent 52%),
+          linear-gradient(165deg, #04110f 0%, #0a2420 46%, #071816 100%);
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(216, 239, 232, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(216, 239, 232, 0.045) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(ellipse at center, #000 18%, transparent 76%);
+        pointer-events: none;
+      }
+      .scene { position: absolute; inset: 0; }
+      .bug, .step-no {
+        position: absolute;
+        top: 32px;
+        z-index: 4;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .bug { left: 56px; font-family: Syne, sans-serif; letter-spacing: -0.03em; text-transform: none; font-size: 22px; font-weight: 800; }
+      .step-no { right: 56px; color: rgba(216, 239, 232, 0.72); }
+      #progress { position: absolute; left: 0; top: 0; height: 5px; background: #e8b84a; z-index: 6; }
+      #caption-wrap {
+        position: absolute;
+        left: 0; right: 0; bottom: 0;
+        height: 150px;
+        z-index: 5;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 0 120px 34px;
+        background: linear-gradient(transparent, rgba(4, 12, 11, 0.92) 46%);
+      }
+      #caption {
+        max-width: 1480px;
+        text-align: center;
+        font-size: 31px;
+        font-weight: 600;
+        line-height: 1.28;
+        text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+      }
+      .kicker {
+        margin: 0 0 12px;
+        color: #e8b84a;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      h1, h2 { font-family: Syne, sans-serif; font-weight: 800; letter-spacing: -0.045em; margin: 0; }
+      .center-lockup {
+        position: absolute;
+        inset: 70px 80px 150px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .center-lockup h1 { font-size: 124px; line-height: 0.9; }
+      .lede { margin: 18px 0 0; font-size: 28px; color: rgba(216, 239, 232, 0.78); }
+
+      .hook-copy { position: absolute; left: 80px; right: 80px; top: 150px; }
+      .hook-copy h1 { font-size: 92px; line-height: 0.94; max-width: 16ch; }
+      .hook-copy.compact { top: 118px; }
+      .hook-copy.compact h1 { font-size: 52px; max-width: 24ch; }
+      .hook-copy h1 em { font-style: normal; color: #e05a3c; }
+      .hook-sub { margin: 18px 0 0; font-size: 28px; max-width: 34ch; color: rgba(216, 239, 232, 0.8); }
+      .cast {
+        position: absolute;
+        left: 72px; right: 72px; top: 214px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+      .card {
+        background: rgba(8, 28, 25, 0.78);
+        border: 1px solid rgba(216, 239, 232, 0.14);
+        border-radius: 22px;
+        padding: 16px 18px 0;
+        height: 530px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(3, 18, 16, 0.35);
+      }
+      .card h3 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #e8b84a;
+      }
+      .illo { width: 100%; height: 500px; display: block; }
+      .stamps {
+        position: absolute;
+        left: 100px; right: 100px; top: 390px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+      }
+      .stamps p {
+        margin: 0;
+        padding: 28px 24px;
+        border-radius: 18px;
+        border: 2px solid rgba(224, 90, 60, 0.85);
+        color: #ffd0c6;
+        font-family: Syne, sans-serif;
+        font-size: 42px;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 1.05;
+        background: rgba(80, 22, 14, 0.35);
+      }
+
+      .concept { position: absolute; left: 80px; right: 80px; top: 140px; bottom: 170px; }
+      .concept h1 { font-size: 68px; line-height: 0.98; max-width: 18ch; }
+      .trio, .rails { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 36px; }
+      .rails { grid-template-columns: 1fr 1fr; }
+      .trio article, .rails article {
+        background: rgba(8, 28, 25, 0.78);
+        border: 1px solid rgba(216, 239, 232, 0.14);
+        border-radius: 20px;
+        padding: 28px 26px;
+        min-height: 220px;
+      }
+      .trio b, .rails h2 { display: block; font-family: Syne, sans-serif; font-size: 36px; letter-spacing: -0.04em; }
+      .trio span, .rails p { display: block; margin-top: 10px; font-size: 22px; color: rgba(216, 239, 232, 0.78); }
+      .rails em { font-style: normal; color: #e8b84a; letter-spacing: 0.14em; font-size: 14px; font-weight: 700; }
+      .strike-list { margin-top: 48px; }
+      .strike-list p { position: relative; margin: 0 0 18px; font-family: Syne, sans-serif; font-size: 64px; letter-spacing: -0.045em; line-height: 1.05; }
+      .strike-list .dead { color: rgba(216, 239, 232, 0.42); }
+      .strike-list .live { color: #f4fffb; }
+      .strike-list i { position: absolute; left: 0; top: 54%; height: 6px; background: #e05a3c; border-radius: 99px; }
+
+      .split {
+        position: absolute;
+        left: 64px; right: 64px; top: 112px; bottom: 164px;
+        display: grid;
+        grid-template-columns: 470px 1fr;
+        gap: 32px;
+      }
+      .flow-copy h1 { font-size: 54px; line-height: 0.98; }
+      .flow-copy ol { list-style: none; margin: 28px 0 0; padding: 0; }
+      .flow-copy li {
+        margin: 0 0 16px;
+        font-family: Syne, sans-serif;
+        font-size: 34px;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+        color: rgba(216, 239, 232, 0.38);
+      }
+      .flow-copy li.on { color: #f4fffb; }
+      .flow-copy li small { display: block; margin-top: 4px; font-family: Figtree, sans-serif; font-size: 16px; letter-spacing: 0; font-weight: 600; color: #e8b84a; }
+      #flow-detail, #safety-detail { margin: 22px 0 0; font-size: 22px; line-height: 1.35; color: rgba(216, 239, 232, 0.82); max-width: 22ch; }
+      .browser {
+        border-radius: 18px;
+        overflow: hidden;
+        border: 1px solid rgba(216, 239, 232, 0.16);
+        background: #071513;
+        box-shadow: 0 30px 70px rgba(0, 0, 0, 0.38);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .chrome { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 14px; background: rgba(0, 0, 0, 0.28); }
+      .chrome i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+      .chrome i:nth-child(1) { background: #e05a3c; }
+      .chrome i:nth-child(2) { background: #e8b84a; }
+      .chrome i:nth-child(3) { background: #17a38a; }
+      .chrome span {
+        margin-left: 10px;
+        font-size: 15px;
+        color: rgba(216, 239, 232, 0.78);
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 999px;
+        padding: 5px 12px;
+      }
+      .rec { margin-left: auto; color: #ffb4a8; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; }
+      .rec::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #e05a3c; margin-right: 8px; }
+      .screen { position: relative; flex: 1; overflow: hidden; background: #061412; }
+      .screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 8%; transform-origin: center 20%; }
+      .cursor {
+        position: absolute;
+        width: 22px; height: 22px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 0 0 7px rgba(232, 184, 74, 0.28);
+        transform: translate(-50%, -50%);
+      }
+      .callout {
+        position: absolute;
+        right: 22px;
+        bottom: 20px;
+        background: rgba(4, 17, 15, 0.9);
+        border: 1px solid rgba(232, 184, 74, 0.55);
+        color: #f3d48a;
+        font-weight: 700;
+        font-size: 18px;
+        padding: 10px 14px;
+        border-radius: 12px;
+      }
+      .links { display: grid; gap: 14px; margin-top: 34px; min-width: 760px; }
+      .links div {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 16px 22px;
+        border-radius: 14px;
+        background: rgba(8, 28, 25, 0.8);
+        border: 1px solid rgba(216, 239, 232, 0.14);
+        font-size: 26px;
+      }
+      .links span { color: #e8b84a; font-size: 14px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700; align-self: center; }
+      .links strong { font-weight: 650; }
+      .team { margin: 28px 0 0; font-size: 18px; color: rgba(216, 239, 232, 0.62); max-width: 1100px; }
+      .log-stream {
+        position: absolute;
+        left: 64px;
+        top: 150px;
+        width: 280px;
+        font-family: "JetBrains Mono", ui-monospace, monospace;
+        font-size: 13px;
+        line-height: 1.55;
+        color: rgba(23, 163, 138, 0.85);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div class="grid" aria-hidden="true"></div>
+      <div id="progress"></div>
+      <div class="bug">Aegis-Split</div>
+      <div class="step-no" id="step-no"></div>
+
+      <section class="scene" id="scene-hook">
+        <div class="center-lockup" id="hook-opener">
+          <p class="kicker">PayPal Hackathon 2026</p>
+          <h1>Aegis-Split</h1>
+          <p class="lede">Team Escrow eSports</p>
+        </div>
+        <div class="hook-copy" id="hook-copy">
+          <p class="kicker" id="hook-kicker">The problem</p>
+          <h1><span id="hook-title"></span> <em id="hook-em"></em></h1>
+          <p class="hook-sub" id="hook-sub"></p>
+        </div>
+        <div class="cast" id="hook-cast">
+          <article class="card" id="card-dev">
+            <h3>Freelancer</h3>
+            <svg class="illo" viewBox="0 0 640 460" id="illo-dev">
+              <rect x="36" y="318" width="560" height="16" rx="6" fill="#143833"/>
+              <rect x="78" y="334" width="14" height="54" fill="#102824"/>
+              <rect x="530" y="334" width="14" height="54" fill="#102824"/>
+              <g id="dev-person">
+                <path d="M70 318c30-92 210-98 250-8" fill="#0f6b5c"/>
+                <circle cx="168" cy="168" r="52" fill="#e7c2a2"/>
+                <path d="M116 156c10-48 98-52 112-6-24-22-82-24-112 6z" fill="#1b2422"/>
+                <path d="M136 164 l22 10" stroke="#3a2a22" stroke-width="4" stroke-linecap="round"/>
+                <path d="M184 174 l22-10" stroke="#3a2a22" stroke-width="4" stroke-linecap="round"/>
+                <circle cx="150" cy="184" r="3.5" fill="#241812"/>
+                <circle cx="186" cy="184" r="3.5" fill="#241812"/>
+                <path d="M154 210 q16 12 30 0" stroke="#a06a55" stroke-width="3" fill="none"/>
+              </g>
+              <g id="dev-laptop">
+                <rect x="300" y="176" width="250" height="150" rx="8" fill="#071614" stroke="#1f6f62" stroke-width="3"/>
+                <rect x="314" y="190" width="222" height="112" rx="4" fill="#0c2420"/>
+                <text x="328" y="218" fill="#8fbfb4" font-size="16" font-family="Figtree">INVOICE 1842</text>
+                <text x="328" y="258" fill="#e8b84a" font-size="36" font-family="Syne" font-weight="800">$4,800</text>
+                <rect x="328" y="270" width="92" height="22" rx="4" fill="#e05a3c"/>
+                <text x="340" y="286" fill="#fff" font-size="13" font-family="Figtree" font-weight="700">UNPAID</text>
+                <path d="M286 326 h278 l-16 22 h-246 z" fill="#1a3330"/>
+              </g>
+              <g id="dev-chat" opacity="0.72">
+                <rect x="48" y="36" width="230" height="78" rx="16" fill="#5e7772"/>
+                <text x="66" y="68" fill="#d5e4df" font-size="18" font-family="Figtree" font-weight="700">Shipped the work</text>
+                <text x="66" y="94" fill="#c9d5d1" font-size="15" font-family="Figtree">Seen</text>
+              </g>
+            </svg>
+          </article>
+          <article class="card" id="card-client">
+            <h3>Client</h3>
+            <svg class="illo" viewBox="0 0 640 460">
+              <rect x="36" y="318" width="560" height="16" rx="6" fill="#143833"/>
+              <g id="client-screen">
+                <rect x="48" y="70" width="280" height="200" rx="10" fill="#071614" stroke="#1f6f62" stroke-width="3"/>
+                <text x="68" y="104" fill="#8fbfb4" font-size="16" font-family="Figtree">main.js</text>
+                <text x="68" y="146" fill="#e05a3c" font-size="28" font-family="Syne" font-weight="800">BUILD FAILED</text>
+                <text x="68" y="180" fill="#d8efe8" font-size="16" font-family="Figtree">tests 0/14</text>
+                <text x="68" y="208" fill="#e05a3c" font-size="16" font-family="Figtree">module missing</text>
+                <text x="68" y="236" fill="#8fbfb4" font-size="16" font-family="Figtree">delivery incomplete</text>
+              </g>
+              <g id="client-person">
+                <path d="M360 318c18-80 200-86 230 0" fill="#c48a1a"/>
+                <circle cx="470" cy="168" r="52" fill="#e7c2a2"/>
+                <path d="M418 150c12-46 104-40 112 4-28-28-86-30-112-4z" fill="#241812"/>
+                <path d="M438 162 l20 12" stroke="#3a2a22" stroke-width="4" stroke-linecap="round"/>
+                <path d="M486 174 l20-12" stroke="#3a2a22" stroke-width="4" stroke-linecap="round"/>
+                <circle cx="452" cy="186" r="3.5" fill="#241812"/>
+                <circle cx="490" cy="186" r="3.5" fill="#241812"/>
+                <path d="M456 214 q16 12 32 0" stroke="#a06a55" stroke-width="3" fill="none"/>
+                <path d="M400 250 h150" stroke="#8a5a12" stroke-width="8" stroke-linecap="round"/>
+              </g>
+            </svg>
+          </article>
+        </div>
+        <div class="stamps" id="hook-stamps">
+          <p>Manual approvals</p>
+          <p>Clunky escrow banks</p>
+        </div>
+        <div class="center-lockup" id="hook-logo">
+          <p class="kicker">That’s why we built</p>
+          <h1>Aegis-Split</h1>
+          <p class="lede">AI-verified micro-escrow for people who ship</p>
+        </div>
+      </section>
+
+      <section class="scene" id="scene-concept">
+        <div class="concept">
+          <p class="kicker">Who it’s for</p>
+          <h1 id="concept-title"></h1>
+          <div class="trio" id="concept-trio">
+            <article><b>Developers</b><span>Push the work. Merge the pull request.</span></article>
+            <article><b>Designers</b><span>Scope a milestone. Lock the words.</span></article>
+            <article><b>Tech clients</b><span>Fund one outcome. Not a leap of faith.</span></article>
+          </div>
+          <div class="strike-list" id="concept-strike">
+            <p class="dead">Human bias<i id="strike-a"></i></p>
+            <p class="dead">Middleman delays<i id="strike-b"></i></p>
+            <p class="live">Automated trust</p>
+          </div>
+          <div class="rails" id="concept-rails">
+            <article>
+              <em>FINANCIAL RAILS</em>
+              <h2>PayPal</h2>
+              <p>Orders lock the milestone in escrow. Payouts release it when the work passes.</p>
+            </article>
+            <article>
+              <em>AUTONOMOUS CHECK</em>
+              <h2>AI verification</h2>
+              <p>The merged git diff is audited against the milestone’s acceptance criteria.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" id="scene-flow">
+        <div class="split">
+          <div class="flow-copy">
+            <p class="kicker">How it works</p>
+            <h1 id="flow-title">End to end</h1>
+            <ol id="flow-steps">
+              <li data-shot="fund">1  Secure vault<small>PayPal Orders</small></li>
+              <li data-shot="work">2  AI audit<small>Merge, then the diff</small></li>
+              <li data-shot="paid">3  Instant payout<small>PayPal Payouts</small></li>
+            </ol>
+            <p id="flow-detail"></p>
+          </div>
+          <div class="browser" id="flow-browser">
+            <div class="chrome"><i></i><i></i><i></i><span id="flow-url"></span><b class="rec">SCREEN</b></div>
+            <div class="screen">
+              <img id="flow-shot" alt="" />
+              <div class="cursor" id="flow-cursor"></div>
+              <div class="callout" id="flow-callout"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" id="scene-safety">
+        <div class="center-lockup" id="safety-intro">
+          <p class="kicker">Safeguards</p>
+          <h1>We didn’t stop at automation.</h1>
+        </div>
+        <div class="split" id="safety-split">
+          <div class="flow-copy">
+            <p class="kicker">When people disagree</p>
+            <h1 id="safety-title">A record, not a rumor</h1>
+            <ol id="safety-steps">
+              <li data-shot="verify">KYC + consent</li>
+              <li data-shot="chat">On-platform chat</li>
+              <li data-shot="exit">Early-exit contract</li>
+              <li data-shot="counselor">Counselor review</li>
+            </ol>
+            <p id="safety-detail"></p>
+          </div>
+          <div class="browser">
+            <div class="chrome"><i></i><i></i><i></i><span id="safety-url"></span><b class="rec">SCREEN</b></div>
+            <div class="screen">
+              <img id="safety-shot" alt="" />
+              <div class="cursor" id="safety-cursor"></div>
+              <div class="callout" id="safety-callout"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="scene" id="scene-close">
+        <div class="center-lockup">
+          <p class="kicker">PayPal Hackathon 2026 · Team Escrow eSports</p>
+          <h1 id="close-mark">Aegis-Split</h1>
+          <p class="lede" id="close-line"></p>
+          <div class="links" id="close-links">
+            <div><span>Repository</span><strong>github.com/abhii176/AEGIS-SPILT</strong></div>
+            <div><span>Live demo</span><strong>aegis-split.onrender.com</strong></div>
+          </div>
+          <p class="team" id="close-team">Mayank Kumar Agarwal, Kavya Chavda, Abhiraj Chhaparwal, Mohit Khoiwal, Krishna Chaudhari</p>
+        </div>
+      </section>
+
+      <div id="caption-wrap"><div id="caption"></div></div>
+    </div>
+    <script src="build/cues.js"></script>
+    <script>
+      const STEPS = {
+        hook: "01   Problem",
+        concept: "02   Product",
+        flow: "03   Workflow",
+        safety: "04   Safeguards",
+        close: "05   Close",
+      };
+      const URLS = {
+        fund: "aegis-split.onrender.com/#fund",
+        work: "aegis-split.onrender.com/#work",
+        paid: "aegis-split.onrender.com/#paid",
+        verify: "aegis-split.onrender.com/#verify",
+        chat: "aegis-split.onrender.com/#project",
+        exit: "aegis-split.onrender.com/#exit",
+        counselor: "aegis-split.onrender.com/#counselor",
+      };
+      const CALLOUT = {
+        fund: "PayPal Orders · milestone locked",
+        work: "Merged diff, checked against the criteria",
+        paid: "PayPal Payouts · full amount · 0% fee",
+        verify: "Identity check and signed consent",
+        chat: "Project chat stays in the product",
+        exit: "Client cancel pays the penalty share",
+        counselor: "Chat, audit, diff, and call recording",
+      };
+      const CURSOR = {
+        fund: [18, 34],
+        work: [16, 48],
+        paid: [28, 28],
+        verify: [22, 58],
+        chat: [30, 46],
+        exit: [22, 42],
+        counselor: [34, 46],
+      };
+      const FLOW_DETAIL = {
+        intro: "Fund the vault. Merge the code. Release the payout.",
+        "vault-title": "The client locks this milestone.",
+        vault: "PayPal holds the money until the check passes.",
+        "audit-title": "A merged pull request is the trigger.",
+        audit: "The backend fetches the raw git diff.",
+        "audit-model": "The auditor reads that diff against the locked criteria.",
+        "payout-title": "A pass releases the money.",
+        payout: "The freelancer is paid the full milestone.",
+      };
+      const SAFETY_DETAIL = {
+        intro: "",
+        kyc: "Both sides verify, then sign the agreement.",
+        chat: "Delivery and payment talk stay on the platform.",
+        exit: "Leave early and the contract says where the money goes.",
+        dispute: "A counselor settles it from the record.",
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+      const norm = (text) => (text || "").toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9-]/g, "");
+
+      function show(el, on) {
+        el.style.display = on ? "" : "none";
+      }
+      function enter(t, start, dur = 0.4) {
+        const p = clamp((t - start) / dur, 0, 1);
+        return 1 - (1 - p) ** 3;
+      }
+      function beatIn(sceneId, t) {
+        const list = window.CUES.beats.filter((beat) => beat.scene === sceneId);
+        let current = null;
+        for (const beat of list) if (t >= beat.start) current = beat;
+        return current;
+      }
+      function activeScene(t) {
+        let best = window.CUES.scenes[0];
+        let bestDist = Infinity;
+        for (const scene of window.CUES.scenes) {
+          if (t >= scene.start && t < scene.end) return scene;
+          const dist = t < scene.start ? scene.start - t : t - scene.end;
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = scene;
+          }
+        }
+        return best;
+      }
+      function sceneOpacity(scene, t) {
+        const fade = 0.4;
+        const inn = scene.start <= 0.05 ? 1 : clamp((t - (scene.start - fade)) / fade, 0, 1);
+        const out = clamp((scene.end + fade - t) / fade, 0, 1);
+        return clamp(Math.min(inn, out), 0, 1);
+      }
+      function wordStart(scene, needle) {
+        const hit = window.CUES.words.find((word) => word.scene === scene && norm(word.text).includes(needle));
+        return hit ? hit.start : null;
+      }
+
+      function paintScreen(prefix, shot, beat, t) {
+        const browser = prefix === "flow" ? $("flow-browser") : $("safety-split");
+        const img = $(`${prefix}-shot`);
+        const url = $(`${prefix}-url`);
+        const cursor = $(`${prefix}-cursor`);
+        const callout = $(`${prefix}-callout`);
+        if (!shot) {
+          if (prefix === "flow") show($("flow-browser"), false);
+          return;
+        }
+        if (prefix === "flow") show($("flow-browser"), true);
+        const src = `build/shots/${shot}.png`;
+        if (img.getAttribute("src") !== src) img.setAttribute("src", src);
+        url.textContent = URLS[shot] || "";
+        const span = Math.max(0.35, (beat?.end || t + 1) - (beat?.start || t));
+        const p = clamp((t - (beat?.start || t)) / span, 0, 1);
+        img.style.transform = `scale(${1 + p * 0.04})`;
+        const point = CURSOR[shot] || [40, 50];
+        const drift = Math.sin(t * 1.7) * 0.6;
+        cursor.style.left = `${point[0] + drift}%`;
+        cursor.style.top = `${point[1] + Math.cos(t * 1.3) * 0.5}%`;
+        callout.textContent = CALLOUT[shot] || "";
+        const steps = document.querySelectorAll(`#${prefix}-steps li`);
+        steps.forEach((item) => item.classList.toggle("on", item.dataset.shot === shot));
+      }
+
+      function paintHook(t) {
+        const beat = beatIn("hook", t);
+        const id = beat ? beat.id : "open";
+        show($("hook-opener"), id === "open");
+        show($("hook-copy"), id === "billions" || id === "broken" || id === "fear" || id === "platforms");
+        $("hook-copy").classList.toggle("compact", id === "fear");
+        show($("hook-sub"), id !== "fear");
+        show($("hook-cast"), id === "fear");
+        show($("hook-stamps"), id === "platforms");
+        show($("hook-logo"), id === "built");
+        const title = $("hook-title");
+        const em = $("hook-em");
+        const sub = $("hook-sub");
+        em.textContent = "";
+        if (id === "billions") {
+          title.textContent = "Billions change hands.";
+          sub.textContent = "The freelance economy moves the money. It does not protect either side.";
+        } else if (id === "broken") {
+          title.textContent = "The system is";
+          em.textContent = "broken.";
+          sub.textContent = "Ghosting on one side. Unfinished code on the other.";
+        } else if (id === "fear") {
+          title.textContent = "Both sides carry the risk.";
+          sub.textContent = "Unpaid hours, or an upfront payment for work that never lands.";
+          const handoff = wordStart("hook", "while") ?? beat.start + 1.2;
+          const clientIn = enter(t, handoff, 0.45);
+          $("card-client").style.opacity = String(clientIn);
+          $("card-client").style.transform = `translateX(${(1 - clientIn) * 48}px)`;
+          $("card-dev").style.opacity = "1";
+          $("dev-person").setAttribute("transform", `translate(0 ${Math.sin(t * 2.4) * 3})`);
+          $("dev-chat").setAttribute("opacity", (0.66 + Math.sin(t * 3) * 0.05).toFixed(3));
+        } else if (id === "platforms") {
+          title.textContent = "The old fix is slow.";
+          sub.textContent = "Human approval queues and escrow banks sit between the work and the pay.";
+          const p = enter(t, beat.start, 0.45);
+          $("hook-stamps").style.opacity = String(p);
+          $("hook-stamps").style.transform = `translateY(${(1 - p) * 16}px)`;
+        }
+      }
+
+      function paintConcept(t) {
+        const beat = beatIn("concept", t);
+        const id = beat ? beat.id : "who";
+        const title = $("concept-title");
+        show($("concept-trio"), id === "who");
+        show($("concept-strike"), id === "bias");
+        show($("concept-rails"), id === "how");
+        if (id === "who") title.textContent = "Built for developers, designers, and fast-moving clients.";
+        if (id === "bias") {
+          title.textContent = "Take the delay out of trust.";
+          const p = enter(t, beat.start, 0.55);
+          $("strike-a").style.width = `${Math.min(1, p * 1.3) * 46}%`;
+          $("strike-b").style.width = `${Math.max(0, p - 0.25) * 78}%`;
+        }
+        if (id === "how") title.textContent = "Secure rails. Autonomous verification.";
+      }
+
+      function paintFlow(t) {
+        const beat = beatIn("flow", t);
+        const id = beat ? beat.id : "intro";
+        $("flow-detail").textContent = FLOW_DETAIL[id] || "";
+        $("flow-title").textContent = id === "intro" ? "Three moves." : id.startsWith("vault") ? "Secure vaulting." : id.startsWith("audit") ? "Automated audit." : "Instant payout.";
+        paintScreen("flow", beat && beat.shot, beat, t);
+      }
+
+      function paintSafety(t) {
+        const beat = beatIn("safety", t);
+        const id = beat ? beat.id : "intro";
+        const intro = !beat || id === "intro";
+        show($("safety-intro"), intro);
+        show($("safety-split"), !intro);
+        if (intro) return;
+        const titles = {
+          kyc: "Know who is on the contract.",
+          chat: "Keep the conversation here.",
+          exit: "The exit is priced in advance.",
+          dispute: "A person closes the hard cases.",
+        };
+        $("safety-title").textContent = titles[id] || "";
+        $("safety-detail").textContent = SAFETY_DETAIL[id] || "";
+        paintScreen("safety", beat.shot, beat, t);
+      }
+
+      function paintClose(t) {
+        const beat = beatIn("close", t);
+        const id = beat ? beat.id : "transform";
+        const line = $("close-line");
+        const links = $("close-links");
+        const team = $("close-team");
+        if (id === "transform") {
+          line.textContent = "From a game of trust to an AI-verified partnership.";
+          show(links, false);
+          show(team, false);
+          $("close-mark").textContent = "Aegis-Split";
+        } else if (id === "cta") {
+          line.textContent = "Open source, and live for the demo.";
+          show(links, true);
+          show(team, false);
+        } else {
+          line.textContent = "Thank you.";
+          show(links, true);
+          show(team, true);
+        }
+      }
+
+      window.renderAt = async function renderAt(t) {
+        const cues = window.CUES;
+        const duration = cues.duration;
+        t = clamp(t, 0, duration);
+        $("progress").style.width = `${(100 * t) / duration}%`;
+        const scene = activeScene(t);
+        $("step-no").textContent = STEPS[scene.id] || "";
+        const hideBug = scene.id === "close" || (scene.id === "hook" && (!beatIn("hook", t) || beatIn("hook", t).id === "built"));
+        document.querySelector(".bug").style.opacity = hideBug ? "0" : "1";
+        for (const item of cues.scenes) {
+          const el = $(`scene-${item.id}`);
+          const opacity = sceneOpacity(item, t);
+          el.style.opacity = String(opacity);
+          el.style.visibility = opacity > 0.01 ? "visible" : "hidden";
+        }
+        const endFade = clamp((duration - t) / 0.45, 0, 1);
+        const openFade = clamp(t / 0.28, 0, 1);
+        $("stage").style.opacity = String(Math.min(endFade, openFade));
+        paintHook(t);
+        paintConcept(t);
+        paintFlow(t);
+        paintSafety(t);
+        paintClose(t);
+        const caption = cues.captions.find((item) => t >= item.start && t < item.end + 0.08);
+        $("caption").textContent = caption ? caption.text : "";
+        const pending = [...document.images].filter((img) => img.getAttribute("src") && !img.complete);
+        await Promise.all(
+          pending.map(
+            (img) =>
+              new Promise((resolve) => {
+                img.addEventListener("load", resolve, { once: true });
+                img.addEventListener("error", resolve, { once: true });
+              })
+          )
+        );
+      };
+    </script>
+  </body>
+</html>

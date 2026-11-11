@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Aegis-Split — Realistic figures</title>
+    <!-- Figtree by Erik Kennedy and Syne by Bonjour Monde, both SIL Open Font License. -->
+    <style>
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-600.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+      @font-face { font-family: Figtree; src: url("fonts/Figtree-700.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+      @font-face { font-family: Syne; src: url("fonts/Syne-700.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+      @font-face { font-family: Syne; src: url("fonts/Syne-800.ttf") format("truetype"); font-weight: 800; font-display: swap; }
+
+      /* Viewport fitting base. Theme values sit on top. */
+      html, body { height: 100%; overflow-x: hidden; margin: 0; }
+      html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+      .slide {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        scroll-snap-align: start;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+      .slide-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-height: 100%;
+        overflow: hidden;
+        padding: var(--slide-padding);
+      }
+      :root {
+        --ink: #d8efe8;
+        --muted: rgba(216, 239, 232, 0.72);
+        --sea: #17a38a;
+        --gold: #e8b84a;
+        --coral: #e07a68;
+        --line: rgba(216, 239, 232, 0.14);
+        --card: rgba(8, 28, 25, 0.78);
+        --title-size: clamp(1.5rem, 5vw, 4rem);
+        --h2-size: clamp(1.25rem, 3.2vw, 2.6rem);
+        --body-size: clamp(0.75rem, 1.35vw, 1.125rem);
+        --small-size: clamp(0.65rem, 0.95vw, 0.85rem);
+        --num-size: clamp(1.6rem, 4vw, 3.4rem);
+        --slide-padding: clamp(1rem, 4vw, 4rem);
+        --content-gap: clamp(0.5rem, 1.6vw, 1.4rem);
+        --element-gap: clamp(0.35rem, 1vw, 0.85rem);
+      }
+      .feature-list, .bullet-list { gap: clamp(0.4rem, 1vh, 1rem); }
+      @media (max-height: 700px) {
+        :root {
+          --slide-padding: clamp(0.75rem, 3vw, 2rem);
+          --content-gap: clamp(0.4rem, 1.2vw, 0.9rem);
+          --title-size: clamp(1.25rem, 4.5vw, 2.5rem);
+          --h2-size: clamp(1rem, 3vw, 1.75rem);
+          --num-size: clamp(1.35rem, 3.2vw, 2.4rem);
+        }
+      }
+      @media (max-height: 600px) {
+        :root {
+          --slide-padding: clamp(0.5rem, 2.5vw, 1.5rem);
+          --content-gap: clamp(0.3rem, 1vw, 0.7rem);
+          --title-size: clamp(1.1rem, 4vw, 2rem);
+          --h2-size: clamp(1rem, 2.8vw, 1.5rem);
+          --body-size: clamp(0.7rem, 1.2vw, 0.95rem);
+          --num-size: clamp(1.2rem, 2.8vw, 2rem);
+        }
+        .nav-dots, .keyboard-hint, .decorative { display: none; }
+      }
+      @media (max-height: 500px) {
+        :root {
+          --slide-padding: clamp(0.4rem, 2vw, 1rem);
+          --title-size: clamp(1rem, 3.5vw, 1.5rem);
+          --h2-size: clamp(0.9rem, 2.5vw, 1.25rem);
+          --body-size: clamp(0.65rem, 1vw, 0.85rem);
+          --num-size: clamp(1.05rem, 2.4vw, 1.6rem);
+          --small-size: clamp(0.58rem, 0.9vw, 0.75rem);
+        }
+      }
+      @media (max-width: 600px) {
+        :root { --title-size: clamp(1.25rem, 7vw, 2.5rem); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.2s !important;
+        }
+        html { scroll-behavior: auto; }
+      }
+
+      body {
+        background: #04110f;
+        color: var(--ink);
+        font-family: Figtree, sans-serif;
+      }
+      .atmosphere {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(900px 520px at 8% -10%, rgba(23, 163, 138, 0.28), transparent 55%),
+          radial-gradient(700px 480px at 100% 0%, rgba(232, 184, 74, 0.12), transparent 50%),
+          linear-gradient(165deg, #04110f, #0a2420 50%, #071816);
+      }
+      .grid-wash {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(216, 239, 232, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(216, 239, 232, 0.04) 1px, transparent 1px);
+        background-size: 56px 56px;
+        mask-image: radial-gradient(ellipse at center, #000 25%, transparent 78%);
+      }
+      main { position: relative; z-index: 1; }
+      .kicker {
+        margin: 0 0 var(--element-gap);
+        color: var(--gold);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: var(--small-size);
+        font-weight: 700;
+      }
+      h1, h2 {
+        margin: 0;
+        font-family: Syne, sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        line-height: 0.98;
+      }
+      h1 { font-size: var(--title-size); max-width: 16ch; }
+      h2 { font-size: var(--h2-size); max-width: 22ch; }
+      .lede, .note, .source, .stat p, .row p, .src li {
+        font-size: var(--body-size);
+        line-height: 1.35;
+        color: var(--muted);
+      }
+      .lede { margin: var(--element-gap) 0 0; max-width: 38ch; }
+      .note, .source { margin: var(--element-gap) 0 0; max-width: 78ch; font-size: var(--small-size); }
+      .grid {
+        display: grid;
+        gap: var(--element-gap);
+        margin-top: var(--content-gap);
+        width: 100%;
+      }
+      .grid.two { grid-template-columns: 1fr 1fr; }
+      .grid.three { grid-template-columns: repeat(3, 1fr); }
+      .stat, .row {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: clamp(0.7rem, 1.6vw, 1.15rem);
+        min-width: 0;
+      }
+      .num {
+        margin: 0 0 0.25rem;
+        font-family: Syne, sans-serif;
+        font-weight: 800;
+        font-size: var(--num-size);
+        letter-spacing: -0.045em;
+        line-height: 0.95;
+        color: var(--ink);
+        font-variant-numeric: tabular-nums;
+      }
+      .num.gold { color: var(--gold); }
+      .num.sea { color: var(--sea); }
+      .num.coral { color: var(--coral); }
+      .stat p, .row p { margin: 0; }
+      .stat strong, .row strong { color: var(--ink); font-weight: 700; }
+      .rows { display: grid; gap: var(--element-gap); margin-top: var(--content-gap); width: 100%; }
+      .row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr); gap: 0.75rem; align-items: center; }
+      .row h3 { margin: 0; font-family: Syne, sans-serif; font-size: clamp(0.95rem, 1.6vw, 1.25rem); letter-spacing: -0.03em; }
+      .src { margin: var(--content-gap) 0 0; padding: 0; list-style: none; max-width: 70rem; }
+      .stat h3 { margin: 0 0 0.35rem; font-family: Syne, sans-serif; font-size: clamp(1rem, 1.8vw, 1.35rem); letter-spacing: -0.03em; }
+      .src li { margin: 0 0 0.35rem; }
+      .src a { color: var(--sea); }
+      .progress {
+        position: fixed;
+        left: 0; top: 0; height: 4px;
+        background: var(--gold);
+        z-index: 5;
+        width: 0;
+      }
+      .chrome {
+        position: fixed;
+        z-index: 4;
+        top: clamp(0.6rem, 2vh, 1.1rem);
+        left: var(--slide-padding);
+        right: var(--slide-padding);
+        display: flex;
+        justify-content: space-between;
+        font-size: var(--small-size);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(216, 239, 232, 0.62);
+        pointer-events: none;
+      }
+      .brand { font-family: Syne, sans-serif; letter-spacing: -0.03em; text-transform: none; font-weight: 800; color: var(--ink); }
+      .nav-dots {
+        position: fixed;
+        z-index: 4;
+        right: clamp(0.4rem, 1.2vw, 1rem);
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .nav-dots button {
+        width: 8px; height: 8px; border-radius: 99px;
+        border: 0; padding: 0;
+        background: rgba(216, 239, 232, 0.28);
+        cursor: pointer;
+      }
+      .nav-dots button[aria-current="true"] { background: var(--gold); height: 18px; }
+      .keyboard-hint {
+        position: fixed;
+        z-index: 4;
+        left: var(--slide-padding);
+        bottom: clamp(0.45rem, 1.5vh, 0.9rem);
+        font-size: var(--small-size);
+        color: rgba(216, 239, 232, 0.45);
+      }
+      .reveal { opacity: 0; transform: translateY(10px); transition: opacity 0.45s ease, transform 0.45s ease; }
+      .slide.is-visible .reveal { opacity: 1; transform: none; }
+      @media (prefers-reduced-motion: reduce) {
+        .reveal { opacity: 1; transform: none; }
+      }
+      @media (max-width: 720px) {
+        .nav-dots { display: none; }
+      }
+      @media (max-width: 600px) {
+        .grid { grid-template-columns: 1fr !important; }
+        .row { grid-template-columns: 1fr; gap: 0.2rem; }
+      }
+      @media print {
+        @page { size: 13.333in 7.5in; margin: 0; }
+        html, body { height: auto; overflow: visible; scroll-snap-type: none; background: #04110f; }
+        .slide {
+          width: 13.333in;
+          height: 7.5in;
+          break-after: page;
+          page-break-after: always;
+          overflow: hidden;
+        }
+        .nav-dots, .keyboard-hint, .progress, .atmosphere, .grid-wash, .chrome { display: none; }
+        .slide { position: relative; counter-increment: sheet; }
+        .slide::before, .slide::after {
+          position: absolute;
+          top: 0.32in;
+          z-index: 2;
+          font-size: 11px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: rgba(216, 239, 232, 0.7);
+        }
+        .slide::before {
+          content: "Aegis-Split";
+          left: 0.55in;
+          font-family: Syne, sans-serif;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          text-transform: none;
+          color: #d8efe8;
+        }
+        .slide::after {
+          content: counter(sheet) " / 11";
+          right: 0.55in;
+        }
+        .reveal { opacity: 1; transform: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="atmosphere decorative" aria-hidden="true"></div>
+    <div class="grid-wash decorative" aria-hidden="true"></div>
+    <div class="progress" id="progress"></div>
+    <div class="chrome"><span class="brand">Aegis-Split</span><span id="index-label">1 / 10</span></div>
+    <nav class="nav-dots" id="dots" aria-label="Slides"></nav>
+    <p class="keyboard-hint">Arrow keys, swipe, or scroll</p>
+
+    <main id="deck">
+      <section class="slide" aria-label="Title">
+        <div class="slide-content">
+          <p class="kicker reveal">PayPal Hackathon 2026 · Team Escrow eSports</p>
+          <h1 class="reveal">Realistic figures, not the $250 sample.</h1>
+          <p class="lede reveal">Published counts of the freelance market, then the same PayPal rules in the product run on a $4,800 module.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Two counts of the market">
+        <div class="slide-content">
+          <p class="kicker reveal">The market</p>
+          <h2 class="reveal">Two counts. They measure different things.</h2>
+          <div class="grid two">
+            <article class="stat reveal">
+              <p class="num">11.9 million</p>
+              <p><strong>BLS, July 2023.</strong> Independent contractors whose contracting was their sole or main job. 7.4% of employment.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num">64 million</p>
+              <p><strong>Upwork / Edelman, 2023.</strong> Americans who did any freelance work that year. 38% of the workforce in that survey. About $1.27 trillion in earnings. Not a GDP line.</p>
+            </article>
+          </div>
+          <p class="source reveal">Edelman surveyed 3,000 working adults, 24 Oct–9 Nov 2023. Margin of error ±1.7%.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Skilled freelance earnings">
+        <div class="slide-content">
+          <p class="kicker reveal">Skilled work, 2024</p>
+          <h2 class="reveal">Knowledge freelancers, counted on their own.</h2>
+          <div class="grid three">
+            <article class="stat reveal">
+              <p class="num sea">28%</p>
+              <p>of U.S. skilled knowledge workers freelanced. More than 20 million people.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num sea">$1.5T</p>
+              <p>their earnings in 2024. Upwork Future Workforce Index.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num sea">$85,000</p>
+              <p>median for people who earn only from freelance work. Full-time employees in the same study: $80,000.</p>
+            </article>
+          </div>
+          <p class="source reveal">Survey of 3,000 U.S. knowledge workers, Dec 2024–Feb 2025. Margin of error ±1.8%. Press release 23 Apr 2025.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Late payment">
+        <div class="slide-content">
+          <p class="kicker reveal">The failure</p>
+          <h2 class="reveal">Late pay is the ordinary case.</h2>
+          <div class="grid two">
+            <article class="stat reveal">
+              <p class="num coral">85%</p>
+              <p>of freelancers are paid late at least some of the time.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num coral">21%</p>
+              <p>are paid late, or not at all, more than half the time.</p>
+            </article>
+          </div>
+          <p class="source reveal">Remote, Contractor Management Report 2025, as published on Remote’s blog. Aegis-Split’s answer is a PayPal capture before the merge, not a reminder email.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Fee comparison">
+        <div class="slide-content">
+          <p class="kicker reveal">Same module, three rails</p>
+          <h2 class="reveal">What the freelancer keeps on $4,800.</h2>
+          <div class="grid three">
+            <article class="stat reveal">
+              <p class="num gold">$4,800</p>
+              <p><strong>Aegis-Split.</strong> Platform fee 0%. The full milestone is the payout.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num">$4,080–$4,800</p>
+              <p><strong>Upwork freelancer fee, 0–15%</strong> on a new contract, locked when it starts. A 10% contract nets $4,320. Pre-May 2025 contracts stay at 10%.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num">$3,840</p>
+              <p><strong>Fiverr.</strong> The seller receives 80% of a completed order.</p>
+            </article>
+          </div>
+          <p class="source reveal">$4,800 is one module, not a surveyed average. The live judge demo is $250 so the click-through stays small. The fee rules are the published ones.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Vault and deposit">
+        <div class="slide-content">
+          <p class="kicker reveal">The hold</p>
+          <h2 class="reveal">$4,800 in. $480 beside it.</h2>
+          <div class="grid two">
+            <article class="stat reveal">
+              <p class="num gold">$4,800.00</p>
+              <p>Client vault. 480,000 cents. PayPal Orders capture. This is the money the audit can release.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num gold">$480.00</p>
+              <p>Freelancer deposit. Default is floor of 10% of the milestone. A second PayPal order. Held until pay, exit, or a counselor decision.</p>
+            </article>
+          </div>
+          <p class="source reveal">Integer cents. Percentages use floor, so a split never invents a cent. 480,000 × 10 / 100 is exact.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Pass payout">
+        <div class="slide-content">
+          <p class="kicker reveal">If the merge passes</p>
+          <h2 class="reveal">The freelancer is paid in full.</h2>
+          <div class="rows">
+            <article class="row reveal">
+              <h3>Payout</h3>
+              <p><strong>$4,800.00</strong> through PayPal Payouts. Platform fee $0.00.</p>
+            </article>
+            <article class="row reveal">
+              <h3>Deposit</h3>
+              <p><strong>$480.00 returned</strong> to the freelancer.</p>
+            </article>
+            <article class="row reveal">
+              <h3>Trigger</h3>
+              <p>A merged pull request, checked against criteria locked at create. GPT-4o mini when a key is set. Otherwise a keyword check. The public demo uses the keyword check.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Early exit">
+        <div class="slide-content">
+          <p class="kicker reveal">If someone leaves</p>
+          <h2 class="reveal">The contract already prices the exit.</h2>
+          <div class="rows">
+            <article class="row reveal">
+              <h3>Both agree</h3>
+              <p>Vault <strong>$4,800</strong> back to the client. Deposit <strong>$480</strong> back to the freelancer.</p>
+            </article>
+            <article class="row reveal">
+              <h3>Client cancels</h3>
+              <p>Default 50% penalty. <strong>$2,400</strong> to the freelancer, <strong>$2,400</strong> refunded, deposit returned.</p>
+            </article>
+            <article class="row reveal">
+              <h3>Freelancer walks</h3>
+              <p>Vault <strong>$4,800</strong> back to the client. Deposit <strong>$480</strong> forfeited to the client.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Dispute">
+        <div class="slide-content">
+          <p class="kicker reveal">If they disagree</p>
+          <h2 class="reveal">A counselor moves the same cents.</h2>
+          <div class="grid three">
+            <article class="stat reveal">
+              <p class="num">$4,800</p>
+              <p><strong>Release.</strong> Remaining vault to the freelancer.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num">$4,800</p>
+              <p><strong>Refund.</strong> Remaining vault back to the client.</p>
+            </article>
+            <article class="stat reveal">
+              <p class="num">$2,400</p>
+              <p><strong>Split, default 50%.</strong> Freelancer $2,400. Client refund $2,400. Floor keeps the extra cent with the client.</p>
+            </article>
+          </div>
+          <p class="source reveal">Deposit returns to the freelancer unless “Freelancer at fault” is checked, which forfeits the $480 to the client. Payout and exit wait until the decision.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="What is live">
+        <div class="slide-content">
+          <p class="kicker reveal">In the product today</p>
+          <h2 class="reveal">What the demo actually runs.</h2>
+          <div class="grid two">
+            <article class="stat reveal">
+              <h3>Running</h3>
+              <p>PayPal vault, payout, and refund. 0% fee. Deposit, exit, and dispute math. On-platform chat. KYC sandbox plus signed consent. The auditor is GPT-4o mini when a key is set, otherwise a keyword check. The public demo uses the keyword check.</p>
+            </article>
+            <article class="stat reveal">
+              <h3>Not in this build</h3>
+              <p>A real login. The demo sends X-User-Id. Live Agora calls, transcription, and stored recordings. The counselor card is a sample preview. Off-platform chat detection is not built.</p>
+            </article>
+          </div>
+          <p class="source reveal">The pitch film says GPT-4o and integrated Agora. This deck stays with the code.</p>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Sources">
+        <div class="slide-content">
+          <p class="kicker reveal">Sources</p>
+          <h2 class="reveal">Where the figures come from.</h2>
+          <ul class="src">
+            <li class="reveal">BLS, Contingent and Alternative Employment Arrangements, July 2023. 11.9 million independent contractors, 7.4% of employment.</li>
+            <li class="reveal"><a href="https://www.upwork.com/research/freelance-forward-2023-research-report">Upwork, Freelance Forward 2023</a>, Edelman Data &amp; Intelligence. 64 million freelancers, $1.27 trillion earnings.</li>
+            <li class="reveal"><a href="https://investors.upwork.com/news-releases/news-release-details/upwork-study-finds-1-4-us-skilled-knowledge-workers-now-work">Upwork, Future Workforce Index</a>, 23 Apr 2025. 28%, $1.5 trillion, $85,000 median.</li>
+            <li class="reveal"><a href="https://remote.com/blog/contractor-management/reversing-late-payment-culture">Remote, Contractor Management Report 2025</a>, via Remote’s late-payment article. 85% and 21%.</li>
+            <li class="reveal"><a href="https://support.upwork.com/hc/en-us/articles/211062538-Learn-about-the-Freelancer-Service-Fee">Upwork Help, Freelancer Service Fee</a>. 0–15% per new contract. Fiverr Help: sellers receive 80% of a completed order.</li>
+            <li class="reveal">Aegis-Split money rules: integer cents, floor percents, 0% platform fee, 10% deposit, 50% client-cancel penalty. The $4,800 case is this code, not a new formula.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const slides = [...document.querySelectorAll(".slide")];
+      const dots = document.getElementById("dots");
+      const progress = document.getElementById("progress");
+      const indexLabel = document.getElementById("index-label");
+      let index = 0;
+      let locked = false;
+
+      slides.forEach((slide, i) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("aria-label", `Slide ${i + 1}`);
+        button.addEventListener("click", () => go(i));
+        dots.appendChild(button);
+      });
+
+      function paint(next) {
+        index = Math.max(0, Math.min(slides.length - 1, next));
+        [...dots.children].forEach((button, i) => {
+          button.setAttribute("aria-current", i === index ? "true" : "false");
+        });
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        indexLabel.textContent = `${index + 1} / ${slides.length}`;
+      }
+
+      function go(next) {
+        const target = Math.max(0, Math.min(slides.length - 1, next));
+        slides[target].scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+        paint(target);
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            entry.target.classList.add("is-visible");
+            paint(slides.indexOf(entry.target));
+          });
+        },
+        { threshold: 0.6 }
+      );
+      slides.forEach((slide) => observer.observe(slide));
+
+      document.addEventListener("keydown", (event) => {
+        const next = { ArrowDown: 1, ArrowRight: 1, PageDown: 1, " ": 1, ArrowUp: -1, ArrowLeft: -1, PageUp: -1 };
+        if (event.key === "Home") { event.preventDefault(); go(0); return; }
+        if (event.key === "End") { event.preventDefault(); go(slides.length - 1); return; }
+        if (!(event.key in next)) return;
+        event.preventDefault();
+        go(index + next[event.key]);
+      });
+
+      window.addEventListener("wheel", (event) => {
+        if (Math.abs(event.deltaY) < 24 || locked) return;
+        event.preventDefault();
+        locked = true;
+        go(index + Math.sign(event.deltaY));
+        setTimeout(() => { locked = false; }, 650);
+      }, { passive: false });
+
+      let startY = null;
+      window.addEventListener("touchstart", (event) => { startY = event.touches[0].clientY; }, { passive: true });
+      window.addEventListener("touchend", (event) => {
+        if (startY == null) return;
+        const delta = event.changedTouches[0].clientY - startY;
+        if (Math.abs(delta) > 48) go(index + (delta < 0 ? 1 : -1));
+        startY = null;
+      });
+
+      paint(0);
+    </script>
+  </body>
+</html>
