@@ -12,8 +12,8 @@ const { formatAuditReport } = require('./formatReport');
  * Returns structured:
  *   { passed, reason, checks: [{ criterion, met, evidence }], report, engine, ... }
  *
- * Prefers OpenAI / Anthropic when keys are set; otherwise deterministic heuristics
- * so the hackathon demo works without API credentials.
+ * Prefers Gemini 2.5 Flash, then OpenAI, then Anthropic when keys are set;
+ * otherwise deterministic heuristics so the hackathon demo works without API credentials.
  */
 
 function createAiAuditor(deps = {}) {
@@ -54,6 +54,8 @@ function createAiAuditor(deps = {}) {
 
     const resolved = resolveProvider({
       provider: aiEnv.provider || 'auto',
+      geminiApiKey: aiEnv.geminiApiKey,
+      geminiModel: aiEnv.geminiModel,
       openaiApiKey: aiEnv.openaiApiKey,
       anthropicApiKey: aiEnv.anthropicApiKey,
     });
@@ -63,6 +65,8 @@ function createAiAuditor(deps = {}) {
         const llmResult = await llmAudit(
           { milestoneId, diff, acceptanceCriteria, files },
           {
+            geminiApiKey: aiEnv.geminiApiKey,
+            geminiModel: aiEnv.geminiModel,
             openaiApiKey: aiEnv.openaiApiKey,
             anthropicApiKey: aiEnv.anthropicApiKey,
             provider: aiEnv.provider || 'auto',
@@ -113,6 +117,8 @@ function finalize(result) {
     report,
     engine: result.engine || 'deterministic',
     provider: result.provider || null,
+    model: result.model || undefined,
+    providerLabel: result.providerLabel || undefined,
     score: typeof result.score === 'number' ? result.score : null,
     files: result.files || undefined,
     llmError: result.llmError || undefined,

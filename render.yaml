@@ -58,8 +58,14 @@ services:
         value: "1.0.0"
       - key: DEFAULT_MILESTONE_CURRENCY
         value: USD
+      # Dashboard-owned. A hardcoded `deterministic` here overwrote
+      # AI_AUDITOR_PROVIDER=gemini on every blueprint sync and forced the keyword check.
       - key: AI_AUDITOR_PROVIDER
-        value: deterministic
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: GITHUB_WEBHOOK_SECRET
         sync: false
       - key: GITHUB_TOKEN

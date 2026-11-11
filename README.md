@@ -92,7 +92,7 @@ A local mock simulates order ids, payouts, and refunds. On PayPal sandbox, a ref
 
 The browser demo and the API are one Node.js process. Express serves `public/` and `/api`. Prisma stores projects, escrow, deposits, audits, chat, and disputes in PostgreSQL. The live site uses Neon. Money calls use PayPal Orders v2, Payouts, and capture refunds. **Submit work** links the sample repo, then runs a demo merge whose diff includes the acceptance criteria so the keyword check can pass without a public GitHub URL. A real `pull_request` webhook checks `X-Hub-Signature-256` when `GITHUB_WEBHOOK_SECRET` is set.
 
-The auditor calls GPT-4o mini when `OPENAI_API_KEY` is set, otherwise Claude 3.5 Haiku when `ANTHROPIC_API_KEY` is set, otherwise a keyword check of the diff. The Render blueprint selects the keyword check. Picking a person sets the `X-User-Id` header. Real login is on the roadmap.
+The auditor calls Gemini 2.5 Flash when `GEMINI_API_KEY` is set (or `AI_AUDITOR_PROVIDER=gemini`), otherwise GPT-4o mini, otherwise Claude 3.5 Haiku, otherwise a keyword check of the diff. On Render, set `GEMINI_API_KEY`, `AI_AUDITOR_PROVIDER=gemini`, and `GEMINI_MODEL=gemini-2.5-flash` in the dashboard — the blueprint does not force the keyword check. Picking a person sets the `X-User-Id` header. Real login is on the roadmap.
 
 ## Run locally
 
@@ -116,7 +116,7 @@ Names only. Copy `.env.example` and fill values there. Do not commit secrets.
 - **Required:** `DATABASE_URL`
 - **Server:** `PORT`, `NODE_ENV`, `APP_BASE_URL`
 - **PayPal:** `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE`, `PAYPAL_MOCK`, `PAYPAL_AUTO_CAPTURE`, `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL`, `PAYPAL_BUYER_EMAIL`, `PAYPAL_PAYOUT_EMAIL`, `PAYPAL_WEBHOOK_ID`
-- **Demo and auditor:** `DEMO_ADMIN_KEY`, `AI_AUDITOR_PROVIDER`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AI_AUDITOR_STRICT`
+- **Demo and auditor:** `DEMO_ADMIN_KEY`, `AI_AUDITOR_PROVIDER`, `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-2.5-flash`), `OPENAI_API_KEY`, `OPENAI_MODEL`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AI_AUDITOR_STRICT`
 - **GitHub:** `GITHUB_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `GITHUB_API_BASE_URL`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_INSTALLATION_ID`
 - **Identity placeholders for a future live integration:** `DIGILOCKER_CLIENT_ID`, `DIGILOCKER_CLIENT_SECRET`, `DIGILOCKER_AUTH_URL`, `DIGILOCKER_TOKEN_URL`, `DIGILOCKER_REDIRECT_URI`, `STRIPE_SECRET_KEY`, `STRIPE_IDENTITY_RETURN_URL`
 - **Other:** `MONITORING_CONSENT_VERSION`, `DEFAULT_MILESTONE_CURRENCY`

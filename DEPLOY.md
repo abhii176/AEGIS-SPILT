@@ -62,7 +62,7 @@ No host API tokens are committed. Secrets stay in the host dashboard / CLI secre
 | `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` | *(omit when mock)* | Required when `PAYPAL_MOCK=false` |
 | `PAYPAL_WEBHOOK_ID` | *(optional)* | Dashboard `sync: false`. Needed only for `POST /api/webhooks/paypal` signature verify. Approve → return → capture works without it. |
 | `DEMO_ADMIN_KEY` | `hackathon-demo-key` | Header `X-Demo-Admin-Key` |
-| `AI_AUDITOR_PROVIDER` | `deterministic` | Demo-safe without LLM keys |
+| `AI_AUDITOR_PROVIDER` | `gemini` (or `auto`) | Dashboard-owned (`sync: false`). With `GEMINI_API_KEY` set, uses Gemini 2.5 Flash (`GEMINI_MODEL=gemini-2.5-flash`). Unset keys fall back to the keyword check. |
 
 **PayPal on Render:** `PAYPAL_MOCK` / `PAYPAL_AUTO_CAPTURE` / client credentials are set in the dashboard (`sync: false`). Explicit `PAYPAL_MOCK=false` never silent-falls back to `MOCK-ORDER` when secrets are missing — OAuth fails loudly instead. Check `GET /health` → `paypal.mock`.
 

@@ -112,10 +112,13 @@ const env = {
     appInstallationId: optional('GITHUB_APP_INSTALLATION_ID'),
   },
 
-  /// Milestone AI auditor — LLM when keys set; else deterministic heuristics
+  /// Milestone AI auditor — LLM when keys set; else deterministic heuristics.
+  /// auto prefers Gemini (the free AI Studio key), then OpenAI, then Anthropic.
   ai: {
-    /// auto | openai | anthropic | deterministic
+    /// auto | gemini | openai | anthropic | deterministic
     provider: optional('AI_AUDITOR_PROVIDER', 'auto'),
+    geminiApiKey: optional('GEMINI_API_KEY'),
+    geminiModel: optional('GEMINI_MODEL', 'gemini-2.5-flash'),
     openaiApiKey: optional('OPENAI_API_KEY'),
     anthropicApiKey: optional('ANTHROPIC_API_KEY'),
     openaiModel: optional('OPENAI_MODEL', 'gpt-4o-mini'),

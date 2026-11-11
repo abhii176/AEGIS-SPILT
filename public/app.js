@@ -1303,12 +1303,18 @@ async function loadEvidence() {
   $('#evidence-body').textContent = lines.join('\n');
 }
 
+function auditorVerdictTag(audit) {
+  if (!audit) return '';
+  if (audit.provider === 'gemini') return audit.providerLabel || 'Gemini 2.5 Flash';
+  return audit.engine || audit.provider || '';
+}
+
 function renderAudit(data) {
   const board = $('#audit-board');
   board.hidden = false;
   const passed = data.audit?.passed === true || data.milestone?.auditPassed === true;
   const waiting = data.awaitingClientSignoff === true;
-  const engine = data.audit?.engine || data.audit?.provider || '';
+  const engine = auditorVerdictTag(data.audit);
   const verdict = $('#audit-verdict');
   let label = passed ? 'PASS — criteria met' : 'FAIL — criteria not met';
   if (data.disputeOpen || data.payoutPaused) label = 'PASS — payout paused (dispute open)';
