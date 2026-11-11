@@ -8,7 +8,7 @@ const {
   resolveProvider,
 } = require('./index');
 const { auditDeterministic } = require('./deterministic');
-const { normalizeLlmResult } = require('./llm');
+const { normalizeLlmResult, callGemini } = require('./llm');
 
 function testParseCriteriaBullets() {
   const criteria = parseAcceptanceCriteria(`
@@ -98,11 +98,76 @@ async function testEmptyDiffFails() {
 
 function testResolveProvider() {
   assert.strictEqual(
-    resolveProvider({ provider: 'auto', openaiApiKey: '', anthropicApiKey: '' }).name,
+    resolveProvider({
+      provider: 'auto',
+      geminiApiKey: '',
+      openaiApiKey: '',
+      anthropicApiKey: '',
+    }).name,
     null
   );
   assert.strictEqual(
-    resolveProvider({ provider: 'auto', openaiApiKey: 'sk-test', anthropicApiKey: '' }).name,
+    resolveProvider({
+      provider: 'auto',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: 'ant-test',
+    }).name,
+    'gemini'
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'auto',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: 'ant-test',
+    }).model,
+    'gemini-2.5-flash'
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'auto',
+      geminiApiKey: '',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: 'ant-test',
+    }).name,
+    'openai'
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'auto',
+      geminiApiKey: '',
+      openaiApiKey: '',
+      anthropicApiKey: 'ant-test',
+    }).name,
+    'anthropic'
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'gemini',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+      openaiApiKey: 'sk-test',
+    }).name,
+    'gemini'
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'gemini',
+      geminiApiKey: '',
+      openaiApiKey: 'sk-test',
+    }).name,
+    null
+  );
+  assert.strictEqual(
+    resolveProvider({
+      provider: 'openai',
+      geminiApiKey: 'gem-test',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: '',
+    }).name,
     'openai'
   );
   assert.strictEqual(
@@ -116,6 +181,7 @@ function testResolveProvider() {
   assert.strictEqual(
     resolveProvider({
       provider: 'deterministic',
+      geminiApiKey: 'gem-test',
       openaiApiKey: 'sk-test',
     }).name,
     null
@@ -192,6 +258,187 @@ async function testLlmMockFail() {
   assert.strictEqual(result.checks[0].met, false);
 }
 
+async function testGeminiMockPass() {
+  const auditor = createAiAuditor({
+    aiEnv: {
+      provider: 'gemini',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: 'ant-test',
+    },
+    llmDeps: {
+      geminiCaller: async () => ({
+        passed: true,
+        reason: 'Model says all good',
+        checks: [
+          {
+            criterion: 'Ship hero CTA',
+            met: true,
+            evidence: 'src/Hero.tsx adds CTA button',
+          },
+        ],
+      }),
+    },
+  });
+
+  const result = await auditor.auditMilestone({
+    milestoneId: 'ms-gemini',
+    acceptanceCriteria: '- Ship hero CTA',
+    diff: '+ export const Hero = () => <button>CTA</button>',
+  });
+
+  assert.strictEqual(result.passed, true);
+  assert.strictEqual(result.engine, 'llm');
+  assert.strictEqual(result.provider, 'gemini');
+  assert.strictEqual(result.model, 'gemini-2.5-flash');
+  assert.strictEqual(result.providerLabel, 'Gemini 2.5 Flash');
+  assert.ok(result.report.includes('Gemini 2.5 Flash'));
+  assert.ok(result.report.includes('PASS'));
+}
+
+async function testAutoModeUsesGeminiAheadOfOpenAi() {
+  let used = null;
+  const auditor = createAiAuditor({
+    aiEnv: {
+      provider: 'auto',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+      openaiApiKey: 'sk-test',
+      anthropicApiKey: 'ant-test',
+    },
+    llmDeps: {
+      geminiCaller: async () => {
+        used = 'gemini';
+        return {
+          passed: true,
+          reason: 'gemini',
+          checks: [{ criterion: 'Ship hero CTA', met: true, evidence: 'Hero.tsx' }],
+        };
+      },
+      openaiCaller: async () => {
+        used = 'openai';
+        return {
+          passed: true,
+          reason: 'openai',
+          checks: [{ criterion: 'Ship hero CTA', met: true, evidence: 'Hero.tsx' }],
+        };
+      },
+    },
+  });
+
+  const result = await auditor.auditMilestone({
+    milestoneId: 'ms-auto-gemini',
+    acceptanceCriteria: '- Ship hero CTA',
+    diff: '+ export const Hero = () => <button>CTA</button>',
+  });
+
+  assert.strictEqual(used, 'gemini');
+  assert.strictEqual(result.provider, 'gemini');
+  assert.strictEqual(result.providerLabel, 'Gemini 2.5 Flash');
+}
+
+async function testGeminiErrorFallsBack() {
+  const auditor = createAiAuditor({
+    aiEnv: {
+      provider: 'gemini',
+      geminiApiKey: 'gem-test',
+      geminiModel: 'gemini-2.5-flash',
+    },
+    llmDeps: {
+      geminiCaller: async () => {
+        const err = new Error('quota');
+        err.code = 'gemini_audit_failed';
+        throw err;
+      },
+    },
+  });
+
+  const result = await auditor.auditMilestone({
+    milestoneId: 'ms-gemini-fallback',
+    acceptanceCriteria: '- Ship hero CTA lighthouse',
+    diff: '+ // ship hero CTA lighthouse feature\n',
+  });
+
+  assert.strictEqual(result.engine, 'deterministic');
+  assert.ok(/LLM unavailable/i.test(result.reason));
+  assert.strictEqual(result.passed, true);
+}
+
+async function testCallGeminiParsesAuditJson() {
+  let seen;
+  const parsed = await callGemini({
+    apiKey: 'gem-test',
+    model: 'gemini-2.5-flash',
+    system: 'sys',
+    user: 'usr',
+    fetchImpl: async (url, opts) => {
+      seen = { url, opts };
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    { thought: true, text: 'thinking {not the answer' },
+                    {
+                      text: JSON.stringify({
+                        passed: true,
+                        reason: 'ok',
+                        checks: [{ criterion: 'Ship hero CTA', met: true, evidence: 'Hero.tsx' }],
+                      }),
+                    },
+                  ],
+                },
+              },
+            ],
+          });
+        },
+      };
+    },
+  });
+
+  assert.strictEqual(parsed.passed, true);
+  assert.strictEqual(parsed.checks[0].criterion, 'Ship hero CTA');
+  assert.ok(String(seen.url).includes('/models/gemini-2.5-flash:generateContent'));
+  assert.ok(!String(seen.url).includes('key='));
+  assert.strictEqual(seen.opts.method, 'POST');
+  assert.strictEqual(seen.opts.headers['x-goog-api-key'], 'gem-test');
+  const body = JSON.parse(seen.opts.body);
+  assert.strictEqual(body.generationConfig.responseMimeType, 'application/json');
+  assert.strictEqual(body.generationConfig.temperature, 0);
+  assert.strictEqual(body.systemInstruction.parts[0].text, 'sys');
+  assert.strictEqual(body.contents[0].parts[0].text, 'usr');
+}
+
+async function testCallGeminiHttpError() {
+  let caught;
+  try {
+    await callGemini({
+      apiKey: 'gem-test',
+      model: 'gemini-2.5-flash',
+      system: 's',
+      user: 'u',
+      fetchImpl: async () => ({
+        ok: false,
+        status: 429,
+        async text() {
+          return 'quota';
+        },
+      }),
+    });
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught);
+  assert.strictEqual(caught.code, 'gemini_audit_failed');
+  assert.strictEqual(caught.status, 502);
+  assert.ok(caught.message.includes('429'));
+}
+
 async function testLlmErrorFallsBack() {
   const auditor = createAiAuditor({
     aiEnv: {
@@ -264,6 +511,11 @@ async function run() {
   testResolveProvider();
   await testLlmMockPass();
   await testLlmMockFail();
+  await testGeminiMockPass();
+  await testAutoModeUsesGeminiAheadOfOpenAi();
+  await testGeminiErrorFallsBack();
+  await testCallGeminiParsesAuditJson();
+  await testCallGeminiHttpError();
   await testLlmErrorFallsBack();
   testNormalizeLlmRequiresAllCriteria();
   testFormatReport();

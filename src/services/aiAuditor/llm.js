@@ -2,18 +2,34 @@ const { env } = require('../../config/env');
 const { parseAcceptanceCriteria, extractFilesFromDiff } = require('./parseCriteria');
 
 /**
- * Call OpenAI or Anthropic for structured milestone audit JSON.
+ * Call Gemini, OpenAI, or Anthropic for structured milestone audit JSON.
  * Inject `fetchImpl` / force provider in tests.
  */
 
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
+function geminiProviderLabel(model = DEFAULT_GEMINI_MODEL) {
+  const id = String(model || DEFAULT_GEMINI_MODEL).trim();
+  if (id === DEFAULT_GEMINI_MODEL) return 'Gemini 2.5 Flash';
+  return `Gemini (${id})`;
+}
+
 function resolveProvider({
   provider = env.ai?.provider || 'auto',
+  geminiApiKey = env.ai?.geminiApiKey,
+  geminiModel = env.ai?.geminiModel || DEFAULT_GEMINI_MODEL,
   openaiApiKey = env.ai?.openaiApiKey,
   anthropicApiKey = env.ai?.anthropicApiKey,
 } = {}) {
   const pref = String(provider || 'auto').toLowerCase();
+  const geminiModelId = geminiModel || DEFAULT_GEMINI_MODEL;
   if (pref === 'deterministic' || pref === 'none' || pref === 'off') {
     return { name: null, reason: 'forced_deterministic' };
+  }
+  if (pref === 'gemini') {
+    return geminiApiKey
+      ? { name: 'gemini', apiKey: geminiApiKey, model: geminiModelId }
+      : { name: null, reason: 'gemini_key_missing' };
   }
   if (pref === 'openai') {
     return openaiApiKey
@@ -25,7 +41,8 @@ function resolveProvider({
       ? { name: 'anthropic', apiKey: anthropicApiKey }
       : { name: null, reason: 'anthropic_key_missing' };
   }
-  // auto
+  // auto — Gemini first (free AI Studio key), then OpenAI, then Anthropic
+  if (geminiApiKey) return { name: 'gemini', apiKey: geminiApiKey, model: geminiModelId };
   if (openaiApiKey) return { name: 'openai', apiKey: openaiApiKey };
   if (anthropicApiKey) return { name: 'anthropic', apiKey: anthropicApiKey };
   return { name: null, reason: 'no_api_key' };
@@ -161,20 +178,78 @@ async function callAnthropic({
   return JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
 }
 
+async function callGemini({
+  apiKey,
+  model = env.ai?.geminiModel || DEFAULT_GEMINI_MODEL,
+  system,
+  user,
+  fetchImpl = globalThis.fetch,
+}) {
+  const modelId = model || DEFAULT_GEMINI_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`;
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Gemini audit failed (${res.status}): ${text.slice(0, 200)}`);
+    err.code = 'gemini_audit_failed';
+    err.status = 502;
+    throw err;
+  }
+  const data = JSON.parse(text);
+  const parts = data.candidates?.[0]?.content?.parts || [];
+  if (!parts.length) {
+    const err = new Error(
+      `Gemini audit failed: ${data.promptFeedback?.blockReason || 'no candidates'}`
+    );
+    err.code = 'gemini_audit_failed';
+    err.status = 502;
+    throw err;
+  }
+  // Gemini 2.5 may attach thought parts ahead of the JSON answer. Use the visible text.
+  const visible = parts.filter((p) => !p.thought && p.text);
+  const content = (visible.length ? visible : parts).map((p) => p.text || '').join('\n');
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  return JSON.parse(jsonMatch ? jsonMatch[0] : '{}');
+}
+
 /**
  * @returns {Promise<object|null>} structured audit or null to signal fallback
  */
 async function auditWithLlm(args, deps = {}) {
   const {
+    geminiApiKey = env.ai?.geminiApiKey,
+    geminiModel = env.ai?.geminiModel || DEFAULT_GEMINI_MODEL,
     openaiApiKey = env.ai?.openaiApiKey,
     anthropicApiKey = env.ai?.anthropicApiKey,
     provider = env.ai?.provider || 'auto',
     fetchImpl = globalThis.fetch,
+    geminiCaller = callGemini,
     openaiCaller = callOpenAi,
     anthropicCaller = callAnthropic,
   } = deps;
 
-  const resolved = resolveProvider({ provider, openaiApiKey, anthropicApiKey });
+  const resolved = resolveProvider({
+    provider,
+    geminiApiKey,
+    geminiModel,
+    openaiApiKey,
+    anthropicApiKey,
+  });
   if (!resolved.name) return null;
 
   const criteria = parseAcceptanceCriteria(args.acceptanceCriteria);
@@ -189,29 +264,47 @@ async function auditWithLlm(args, deps = {}) {
   });
 
   let parsed;
-  if (resolved.name === 'openai') {
+  if (resolved.name === 'gemini') {
+    parsed = await geminiCaller({
+      apiKey: resolved.apiKey,
+      model: resolved.model || DEFAULT_GEMINI_MODEL,
+      system: prompt.system,
+      user: prompt.user,
+      fetchImpl,
+    });
+  } else if (resolved.name === 'openai') {
     parsed = await openaiCaller({
       apiKey: resolved.apiKey,
       system: prompt.system,
       user: prompt.user,
       fetchImpl,
     });
-  } else {
+  } else if (resolved.name === 'anthropic') {
     parsed = await anthropicCaller({
       apiKey: resolved.apiKey,
       system: prompt.system,
       user: prompt.user,
       fetchImpl,
     });
+  } else {
+    return null;
   }
 
-  return normalizeLlmResult(parsed, criteria, resolved.name);
+  const normalized = normalizeLlmResult(parsed, criteria, resolved.name);
+  if (resolved.name === 'gemini') {
+    normalized.model = resolved.model || DEFAULT_GEMINI_MODEL;
+    normalized.providerLabel = geminiProviderLabel(normalized.model);
+  }
+  return normalized;
 }
 
 module.exports = {
+  DEFAULT_GEMINI_MODEL,
   resolveProvider,
+  geminiProviderLabel,
   buildPrompt,
   normalizeLlmResult,
+  callGemini,
   callOpenAi,
   callAnthropic,
   auditWithLlm,

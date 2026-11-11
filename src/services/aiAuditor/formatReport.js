@@ -4,7 +4,8 @@
 function formatAuditReport(result) {
   const passed = Boolean(result?.passed);
   const engine = result?.engine || 'unknown';
-  const provider = result?.provider ? `/${result.provider}` : '';
+  const providerName = result?.providerLabel || result?.provider || '';
+  const provider = providerName ? `/${providerName}` : '';
   const lines = [
     `${passed ? 'PASS' : 'FAIL'} — ${result?.reason || 'No reason provided.'}`,
     `engine: ${engine}${provider}`,
