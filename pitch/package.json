@@ -9,7 +9,8 @@
     "capture": "node capture_ui.mjs",
     "stills": "node render.mjs --stills",
     "render": "node render.mjs",
-    "assemble": "bash assemble.sh"
+    "assemble": "bash assemble.sh",
+    "screen": "node record_screen.mjs"
   },
   "dependencies": {
     "playwright-core": "^1.49.1"
